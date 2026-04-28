@@ -28,6 +28,83 @@
   cursor:pointer;
 }
 
+#commentsModal{
+  display:none;
+  position:fixed;
+  top:10px;
+  right:10px;
+  width:450px;
+  height:80vh;
+  background:#222;
+  border:2px solid #555;
+  overflow:auto;
+  z-index:30000;
+  padding:10px;
+}
+
+#commentsList{
+  margin-top:10px;
+  height: calc(80vh - 140px);
+  overflow:auto;
+  background:#111;
+  border:1px solid #333;
+  padding:8px;
+}
+
+.commentItem{
+  background:#333;
+  border:1px solid #444;
+  border-radius:6px;
+  padding:8px;
+  margin-bottom:8px;
+}
+
+.commentMeta{
+  font-size:12px;
+  color:#bbb;
+  margin-bottom:4px;
+}
+
+.commentText{
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+
+#commentComposer{
+  display:flex;
+  gap:6px;
+  margin-top:10px;
+}
+
+#commentInput{
+  flex:1;
+  padding:6px;
+  background:#111;
+  color:white;
+  border:1px solid #666;
+  border-radius:4px;
+}
+
+#sendCommentBtn{
+  padding:6px 10px;
+  background:#444;
+  color:white;
+  border:none;
+  border-radius:4px;
+  cursor:pointer;
+}
+#sendCommentBtn:hover{ background:#555; }
+
+#closeCommentsBtn{
+  margin-top:10px;
+  padding:6px 10px;
+  background:#444;
+  color:white;
+  border:none;
+  border-radius:4px;
+  cursor:pointer;
+}
+
 #elementTabs button.active{
   border:2px solid yellow;
   background:#555;
@@ -91,6 +168,20 @@ input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
 </style>
 </head>
 <body>
+
+<div id="commentsModal">
+  <h3 id="commentsTitle">Comments</h3>
+
+  <div id="commentsList"></div>
+
+  <div id="commentComposer">
+    <input id="commentInput" type="text" placeholder="Type a message..." />
+    <button id="sendCommentBtn">Send</button>
+  </div>
+
+  <button id="closeCommentsBtn">Close</button>
+</div>
+
 <div id="versionLabel">v1.3.0</div>
 
 <div id="ui">
@@ -379,6 +470,22 @@ async function loadAndShowPublicSaves() {
       creatorLabel.style.color = "#ccc";
       creatorLabel.style.fontSize = "12px";
 
+const commentsBtn = document.createElement("button");
+commentsBtn.innerText = "Comments";
+commentsBtn.style.background = "#555";
+commentsBtn.style.color = "white";
+commentsBtn.style.border = "none";
+commentsBtn.style.padding = "5px";
+commentsBtn.style.cursor = "pointer";
+commentsBtn.style.marginLeft = "5px";
+
+commentsBtn.onclick = (e) => {
+  e.stopPropagation();
+  openCommentsModal(save); // <-- uses the modal functions we added
+};
+
+saveDiv.appendChild(commentsBtn);
+
       textWrap.appendChild(nameLabel);
       textWrap.appendChild(creatorLabel);
       saveDiv.appendChild(textWrap);
@@ -441,6 +548,129 @@ document.getElementById("publicSavesModal").style.display = "none";
 
 let currentUser = null;
 let authToken = null;
+
+let currentPublicSaveIdForComments = null;
+let commentsPollTimer = null;
+
+const commentsModal = document.getElementById("commentsModal");
+const commentsTitle = document.getElementById("commentsTitle");
+const commentsList = document.getElementById("commentsList");
+const commentInput = document.getElementById("commentInput");
+const sendCommentBtn = document.getElementById("sendCommentBtn");
+const closeCommentsBtn = document.getElementById("closeCommentsBtn");
+
+function renderComments(comments) {
+  commentsList.innerHTML = "";
+
+  if (!comments || comments.length === 0) {
+    commentsList.innerHTML = `<p style="color:#ccc;">No comments yet.</p>`;
+    return;
+  }
+
+  for (const c of comments) {
+    const item = document.createElement("div");
+    item.className = "commentItem";
+
+    const meta = document.createElement("div");
+    meta.className = "commentMeta";
+    const when = c.created ? new Date(c.created).toLocaleString() : "";
+    meta.textContent = `${c.creator || "Unknown"} ${when ? "- " + when : ""}`;
+
+    const text = document.createElement("div");
+    text.className = "commentText";
+    text.textContent = c.text;
+
+    item.appendChild(meta);
+    item.appendChild(text);
+    commentsList.appendChild(item);
+  }
+}
+
+async function loadCommentsForCurrentSave() {
+  if (!currentPublicSaveIdForComments) return;
+
+  try {
+    commentsList.innerHTML = `<p style="color:#ccc;">Loading comments...</p>`;
+    const res = await fetch(`${SERVER_URL}/public-comments/${currentPublicSaveIdForComments}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderComments(data);
+  } catch (err) {
+    commentsList.innerHTML = `<p style="color:#f44;">Failed to load comments: ${err.message}</p>`;
+  }
+}
+
+function startCommentsPolling() {
+  stopCommentsPolling();
+  commentsPollTimer = setInterval(() => {
+    loadCommentsForCurrentSave();
+  }, 2000);
+}
+
+function stopCommentsPolling() {
+  if (commentsPollTimer) clearInterval(commentsPollTimer);
+  commentsPollTimer = null;
+}
+
+function openCommentsModal(save) {
+  const saveId = save._id || save.id;
+  currentPublicSaveIdForComments = saveId;
+
+  commentsTitle.innerText = `Comments: ${save.name}`;
+  commentsModal.style.display = "block";
+
+  loadCommentsForCurrentSave();
+  startCommentsPolling();
+  setTimeout(() => commentInput.focus(), 0);
+}
+
+function closeComments() {
+  stopCommentsPolling();
+  commentsModal.style.display = "none";
+  currentPublicSaveIdForComments = null;
+}
+
+closeCommentsBtn.onclick = () => closeComments();
+
+sendCommentBtn.onclick = async () => {
+  if (!currentPublicSaveIdForComments) return;
+
+  if (!currentUser || !authToken) {
+    alert("You must be logged in to send comments.");
+    return;
+  }
+
+  const text = commentInput.value.trim();
+  if (!text) return;
+
+  try {
+    const res = await fetch(
+      `${SERVER_URL}/public-comments/${currentPublicSaveIdForComments}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": authToken
+        },
+        body: JSON.stringify({ text })
+      }
+    );
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to send comment");
+    }
+
+    commentInput.value = "";
+    await loadCommentsForCurrentSave();
+  } catch (err) {
+    alert("Failed to send: " + err.message);
+  }
+};
+
+commentInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendCommentBtn.click();
+});
 
 function updateAuthUI() {
   document.getElementById("loginBtn").style.display = currentUser ? "none" : "inline-block";
