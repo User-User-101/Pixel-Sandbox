@@ -350,6 +350,12 @@ async function loadAndShowPublicSaves() {
         thumb.title = "Click to load this save";
         thumb.onclick = () => {
           grid = decompressGrid(save.data);
+
+	HEIGHT = grid.length;
+ 	 WIDTH = grid[0].length;
+  	canvas.width = WIDTH * SIZE;
+  	canvas.height = HEIGHT * SIZE;
+
           modal.style.display = "none";
         };
         saveDiv.appendChild(thumb);
