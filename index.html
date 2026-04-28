@@ -1,0 +1,2595 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Pixel Sandbox</title>
+<style>
+
+#elementUI{
+  display:flex;
+  height:300px;
+  border:2px solid black;
+  background:#222;
+}
+
+#elementTabs{
+  width:90px;
+  border-right:2px solid black;
+  overflow-y:auto;
+}
+
+#elementTabs button{
+  width:100%;
+  padding:6px;
+  margin-bottom:2px;
+  background:#444;
+  color:white;
+  border:none;
+  cursor:pointer;
+}
+
+#elementTabs button.active{
+  border:2px solid yellow;
+  background:#555;
+}
+
+#elementPanel{
+  flex:1;
+  overflow-y:auto;
+  padding:4px;
+}
+
+#elements button{
+  width:100%;
+  margin-bottom:4px;
+  padding:5px;
+  cursor:pointer;
+  background:#444;
+  color:white;
+  border:2px solid transparent;
+}
+
+#elements button.active{
+  border:2px solid yellow;
+}
+
+#versionLabel {
+  position: fixed;
+  bottom: 5px;
+  right: 10px;
+  font-size: 12px;
+  color: #ccc;
+  background: rgba(0,0,0,0.5);
+  padding: 2px 5px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 9999;
+  font-family: Arial, sans-serif;
+}
+
+#elements button {
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 5px;
+  cursor: pointer;
+  background: #444;
+  color: white;
+  border: 2px solid transparent;
+  transition: border 0.2s, background 0.2s;
+}
+
+#elements button:hover {
+  background: #555;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body { display:flex; height:100vh; overflow:hidden; font-family:Arial; background:#222; color:white; }
+#ui { width:250px; background:#333; padding:10px; overflow-y:auto; border-right:4px solid black; }
+#elements button { width:100%; margin-bottom:4px; padding:5px; cursor:pointer; }
+canvas { flex:1; background:#111; display:block; cursor:none; }
+input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
+</style>
+</head>
+<body>
+<div id="versionLabel">v1.2.0</div>
+
+<div id="ui">
+
+<div id="authSection">
+  <button id="loginBtn">Login</button>
+  <button id="registerBtn">Register</button>
+  <button id="logoutBtn" style="display:none;">Logout</button>
+  <span id="userStatus"></span>
+</div>
+<!-- Login/Register modals or prompts can be added -->
+
+<button id="browsePublicBtn">Browse Public Saves</button>
+
+<div id="publicSavesModal" style="
+  display:none;
+  position:fixed;
+  top:10px;
+  left:260px;
+  width:450px;
+  height:80vh;
+  background:#222;
+  border:2px solid #555;
+  overflow:auto;
+  z-index:30000;
+  padding:10px;
+">
+  <h3>Public Saves</h3>
+
+  <input id="publicSearchInput" type="text" placeholder="Search saves or creators..." style="
+    width:100%;
+    padding:6px;
+    margin:8px 0;
+    background:#111;
+    color:white;
+    border:1px solid #666;
+  ">
+
+  <div id="publicSavesList"></div>
+
+  <button id="closePublicBtn" style="margin-top:10px;">Close</button>
+</div>
+
+<button id="saveBtn">Save Grid</button>
+<button id="manageSavesBtn">Manage Saves</button>
+
+<!-- Save Manager Modal -->
+<div id="saveManager" style="
+    display:none;
+    position:absolute;
+    top:10px;
+    left:260px;
+    width:400px;
+    height:80vh;
+    background:#222;
+    border:2px solid #555;
+    padding:10px;
+    overflow-y:auto;
+    z-index:10000;
+">
+    <h3 style="color:white;">Saved Grids</h3>
+    <div id="savesList"></div>
+    <button id="closeSaveManager" style="margin-top:10px;">Close</button>
+</div>
+<h2>Elements</h2>
+
+<div id="elementUI">
+
+  <div id="elementTabs"></div>
+
+  <div id="elementPanel">
+    <div id="elements"></div>
+  </div>
+
+</div>
+
+<h3>Brush Size</h3>
+<input type="range" id="brushSize" min="1" max="50" value="1">
+
+<h3>Air Temperature (°C)</h3>
+<input type="number" id="airTempInput" value="20">
+<button id="applyAirTempBtn">Update Air Temperature</button>
+
+<button id="clearBtn">Clear Screen</button>
+<button id="pauseBtn">Pause</button>
+
+<h3>Info</h3>
+<div id="info">Hover pixel</div>
+
+<h3>Description</h3>
+<div id="description" style="
+    background:#888;
+    color:white;
+    border:2px solid black;
+    padding:5px;
+    min-height:40px;
+    font-size:14px;
+">No description</div>
+
+<h3>Status</h3>
+<div id="statusBox" style="
+    background:#777;
+    color:white;
+    border:2px solid black;
+    padding:5px;
+    min-height:30px;
+    font-size:14px;
+">Replace Mode: OFF</div>
+
+</div> <!-- NOW ui ends here -->
+
+<canvas id="canvas"></canvas>
+
+<script>
+
+const SERVER_URL = "https://backend-c7h6.onrender.com";
+
+document.addEventListener("DOMContentLoaded", () => {
+  const browseBtn = document.getElementById("browsePublicBtn");
+  const closeBtn = document.getElementById("closePublicBtn");
+  const searchInput = document.getElementById("publicSearchInput");
+
+  if (browseBtn) {
+    browseBtn.onclick = () => {
+      document.getElementById("publicSavesModal").style.display = "block";
+      loadAndShowPublicSaves();
+    };
+  }
+
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      document.getElementById("publicSavesModal").style.display = "none";
+    };
+  }
+
+  if (searchInput) {
+    let searchTimer = null;
+
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        loadAndShowPublicSaves();
+      }, 250);
+    });
+  }
+});
+
+// --- Generate thumbnail ---
+    function generateThumbnail(gridData, thumbWidth = 80, thumbHeight = 80) {
+        const thumbCanvas = document.createElement("canvas");
+        thumbCanvas.width = thumbWidth;
+        thumbCanvas.height = thumbHeight;
+        const ctxThumb = thumbCanvas.getContext("2d");
+
+        const rows = gridData.length;
+        const cols = gridData[0].length;
+
+        for (let y = 0; y < thumbHeight; y++) {
+            for (let x = 0; x < thumbWidth; x++) {
+                const gx = Math.floor(x / thumbWidth * cols);
+                const gy = Math.floor(y / thumbHeight * rows);
+                const p = gridData[gy][gx];
+                ctxThumb.fillStyle = elements[p.type]?.color?.(p) || "#000";
+                ctxThumb.fillRect(x, y, 1, 1);
+            }
+        }
+        return thumbCanvas;
+    }
+
+// --- Type mapping for compression ---
+    const typeMap = {
+  air:0,
+  sand:1,
+  water:2,
+  steam:3,
+  fire:4,
+  stone:5,
+  lava:6,
+  soil:7,
+  grass:8,
+  sparks:9,
+  plasma:10,
+  cold_fire:11,
+  detCord:12,
+  oil:13,
+  glass:14,
+  explosive:15,
+  iron:16,
+  plastic:17,
+  cloud:18,
+  meltedplastic:19,
+  smoke:20,
+  wood:21,
+  nuke:22,
+  coldLiquid:23,
+  ice:24,
+  grassCritter:25,
+  waterCritter:26,
+  solidExplosive:27,
+  flammable_plastic:28
+};
+
+const revTypeMap = Object.fromEntries(Object.entries(typeMap).map(([k,v])=>[v,k]));
+
+    function decompressGrid(data){
+        return data.map(row => row.map(p=>({
+            type: revTypeMap[p.t],
+            temp: p.temp,
+            wet: p.wet/100,
+            life: p.life,
+            updated: false,
+            origin: null
+        })));
+    }
+
+async function loadAndShowPublicSaves() {
+  const modal = document.getElementById("publicSavesModal");
+  const listDiv = document.getElementById("publicSavesList");
+  
+  modal.style.display = "block";
+  listDiv.innerHTML = '<p style="color:#ccc;">Loading public saves...</p>';
+
+  try {
+    const res = await fetch(`${SERVER_URL}/public-saves`);
+    
+    if (!res.ok) {
+      throw new Error(`Server returned ${res.status}`);
+    }
+    
+    const saves = await res.json();
+    console.log("Loaded public saves:", saves);
+    
+    listDiv.innerHTML = "";
+
+    if (!saves || saves.length === 0) {
+      listDiv.innerHTML = '<p style="color:#ccc;">No public saves found.</p>';
+      return;
+    }
+
+    saves.forEach(save => {
+      const saveDiv = document.createElement("div");
+      saveDiv.style.display = "flex";
+      saveDiv.style.alignItems = "center";
+      saveDiv.style.marginBottom = "8px";
+      saveDiv.style.background = "#444";
+      saveDiv.style.padding = "5px";
+      saveDiv.style.border = "1px solid #666";
+
+      // Generate thumbnail
+      try {
+        const thumb = generateThumbnail(decompressGrid(save.data));
+        thumb.style.cursor = "pointer";
+        thumb.title = "Click to load this save";
+        thumb.onclick = () => {
+          grid = decompressGrid(save.data);
+          modal.style.display = "none";
+        };
+        saveDiv.appendChild(thumb);
+      } catch (e) {
+        console.error("Error generating thumbnail:", e);
+      }
+
+      const textWrap = document.createElement("div");
+      textWrap.style.marginLeft = "10px";
+      textWrap.style.flexGrow = "1";
+      textWrap.style.overflow = "hidden";
+
+      const nameLabel = document.createElement("div");
+      nameLabel.innerText = save.name;
+      nameLabel.style.color = "white";
+      nameLabel.style.fontWeight = "bold";
+      nameLabel.style.wordBreak = "break-word";
+
+      const creatorLabel = document.createElement("div");
+      creatorLabel.innerText = `by ${save.creator || "Unknown"}`;
+      creatorLabel.style.color = "#ccc";
+      creatorLabel.style.fontSize = "12px";
+
+      textWrap.appendChild(nameLabel);
+      textWrap.appendChild(creatorLabel);
+      saveDiv.appendChild(textWrap);
+
+      // Show delete button only if current user is the creator
+      if (currentUser && authToken && save.creator === currentUser) {
+        const delBtn = document.createElement("button");
+        delBtn.innerText = "Delete";
+        delBtn.style.background = "red";
+        delBtn.style.color = "white";
+        delBtn.style.border = "none";
+        delBtn.style.padding = "5px";
+        delBtn.style.cursor = "pointer";
+        delBtn.style.marginLeft = "5px";
+
+        delBtn.onclick = async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Delete public save "${save.name}"?`)) return;
+
+          try {
+            // Use save._id if available (MongoDB), otherwise save.id
+            const saveId = save._id || save.id;
+            if (!saveId) {
+              throw new Error("Save ID not found");
+            }
+
+            const delRes = await fetch(`${SERVER_URL}/delete_save/${saveId}`, {
+              method: "DELETE",
+              headers: {
+                "Authorization": authToken
+              }
+            });
+            
+            const delData = await delRes.json();
+
+            if (!delRes.ok || !delData.success) {
+              throw new Error(delData.error || "Failed to delete");
+            }
+
+            loadAndShowPublicSaves(); // refresh the list after deletion
+          } catch (err) {
+            console.error("Delete error:", err);
+            alert("Failed to delete: " + err.message);
+          }
+        };
+        saveDiv.appendChild(delBtn);
+      }
+      
+      listDiv.appendChild(saveDiv);
+    });
+  } catch (err) {
+    console.error("Failed to load public saves:", err);
+    listDiv.innerHTML = '<p style="color:#f44;">Error loading saves: ' + err.message + '</p>';
+  }
+}
+document.getElementById("closePublicBtn").onclick = () => {
+  document.getElementById("publicSavesModal").style.display = "none";
+document.getElementById("publicSavesModal").style.display = "none";
+};
+
+let currentUser = null;
+let authToken = null;
+
+function updateAuthUI() {
+  document.getElementById("loginBtn").style.display = currentUser ? "none" : "inline-block";
+  document.getElementById("registerBtn").style.display = currentUser ? "none" : "inline-block";
+  document.getElementById("logoutBtn").style.display = currentUser ? "inline-block" : "none";
+  document.getElementById("userStatus").innerText = currentUser ? `Logged in as ${currentUser}` : "Not logged in";
+}
+
+// Login
+document.getElementById("loginBtn").onclick = () => {
+  const username = prompt("Enter username:");
+  const password = prompt("Enter password:");
+  fetch(`${SERVER_URL}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  }).then(res => res.json())
+    .then(data => {
+      if (data.token) {
+        authToken = data.token;
+        currentUser = username;
+        updateAuthUI();
+        loadSaves(); // load user saves
+      } else {
+        alert("Login failed");
+      }
+    });
+}
+
+// Register
+document.getElementById("registerBtn").onclick = () => {
+  const username = prompt("Choose username:");
+  const password = prompt("Choose password:");
+  fetch(`${SERVER_URL}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  }).then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        alert("Registered! You can now login.");
+      } else {
+        alert("Registration failed");
+      }
+    });
+}
+
+// Logout
+document.getElementById("logoutBtn").onclick = () => {
+  currentUser = null;
+  authToken = null;
+  updateAuthUI();
+  // Clear local saves or show only local
+}
+
+// Modify save/load functions to use server when logged in
+
+async function saveCurrentGrid(name) {
+  if (currentUser && authToken) {
+    // Save to server
+    await fetch(`${SERVER_URL}/save`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": authToken
+      },
+      body: JSON.stringify({ name, data: compressGrid(grid) })
+    });
+  } else {
+    // Save locally
+    let saves = JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+    saves.push({ name, data: compressGrid(grid) });
+    localStorage.setItem("pixelSandboxSaves", JSON.stringify(saves));
+  }
+}
+
+// Load saves function
+async function loadSaves() {
+  if (currentUser && authToken) {
+    const res = await fetch(`${SERVER_URL}/saves`, {
+      headers: { "Authorization": authToken }
+    });
+    const saves = await res.json();
+    return saves;
+  } else {
+    return JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+  }
+}
+
+// When displaying saves (renderSaves), fetch from server if logged in
+
+async function renderSaves() {
+  savesList.innerHTML = "";
+  const saves = await loadSaves();
+
+  saves.forEach((save, index) => {
+    // same as before
+  });
+}
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let WIDTH, HEIGHT;
+const SIZE = 6;
+let airTemperature = 20;
+let paused = false;
+let mouseDownLeft = false;
+let mouseDownRight = false;
+
+function resizeCanvas(){
+  WIDTH = Math.floor((window.innerWidth - 250)/SIZE);
+  HEIGHT = Math.floor(window.innerHeight/SIZE);
+  canvas.width = WIDTH*SIZE;
+  canvas.height = HEIGHT*SIZE;
+  createGrid();
+}
+window.onresize = resizeCanvas;
+
+let replaceMode = false;
+let brushSize = 1;
+let currentElement = "sand";
+document.getElementById("brushSize").oninput = e => {
+  brushSize = Math.max(1, Math.min(50, parseInt(e.target.value)||1));
+  updateStatus();
+};
+document.getElementById("airTempInput").oninput = e => {
+  let val = parseFloat(e.target.value);
+  if(!isNaN(val)) airTemperature = val;
+};
+
+function countCreatures(){
+  let grassCount = 0;
+  let waterCount = 0;
+
+  for(let y = 0; y < HEIGHT; y++){
+    for(let x = 0; x < WIDTH; x++){
+      let t = grid[y][x].type;
+
+      if(t === "grassCritter") grassCount++;
+      if(t === "waterCritter") waterCount++;
+    }
+  }
+
+  return { grass: grassCount, water: waterCount };
+}
+
+function updateStatus(){
+  const box = document.getElementById("statusBox");
+
+  const counts = countCreatures();
+
+  box.innerText =
+    "Replace Mode: " + (replaceMode ? "ON" : "OFF") +
+    " | Brush Size: " + brushSize +
+    " | GrassCritters: " + counts.grass +
+    " | WaterCritters: " + counts.water;
+}
+
+function createPixel(type="air"){ 
+  let temp = typeof airTemperature==="number" && !isNaN(airTemperature) ? airTemperature : 20;
+  if(type==="lava") temp = 700;
+  return { type, temp, wet:0, life:100, updated:false, origin:null }; 
+}
+
+let grid = [];
+function createGrid(){
+  grid=[];
+  for(let y=0;y<HEIGHT;y++){
+    grid[y]=[];
+    for(let x=0;x<WIDTH;x++){
+      grid[y][x]=createPixel();
+    }
+  }
+}
+resizeCanvas();
+
+function inBounds(x,y){ return x>=0 && y>=0 && x<WIDTH && y<HEIGHT; }
+function swap(x1,y1,x2,y2){ let t=grid[y1][x1]; grid[y1][x1]=grid[y2][x2]; grid[y2][x2]=t; }
+
+const elements = {};
+const elementSections = {};
+let currentSection = null;
+
+function switchSection(section){
+
+  currentSection = section;
+
+  // Highlight tab
+  document.querySelectorAll("#elementTabs button")
+  .forEach(b => b.classList.remove("active"));
+
+  elementSections[section].tab.classList.add("active");
+
+  // Clear element panel
+  const panel = document.getElementById("elements");
+  panel.innerHTML = "";
+
+  // Add buttons
+  elementSections[section].buttons.forEach(btn=>{
+    panel.appendChild(btn);
+  });
+}
+
+function addElement(name,data,section="Other"){
+
+  elements[name]=data;
+
+  // Create section if needed
+  if(!elementSections[section]){
+
+    const tab=document.createElement("button");
+    tab.textContent=section;
+
+    elementSections[section]={
+      tab:tab,
+      buttons:[]
+    };
+
+    tab.onclick=()=>switchSection(section);
+
+    document.getElementById("elementTabs").appendChild(tab);
+
+    // First tab auto open
+    if(!currentSection) switchSection(section);
+  }
+
+  const btn=document.createElement("button");
+  btn.textContent=name;
+
+  btn.onclick=()=>{
+    currentElement=name;
+
+    document.querySelectorAll("#elements button")
+      .forEach(b=>b.classList.remove("active"));
+
+    btn.classList.add("active");
+
+    document.getElementById("description").innerText =
+      data.description || "No description";
+  };
+
+  btn.addEventListener("mouseenter",()=>{
+    document.getElementById("description").innerText =
+      data.description || "No description";
+  });
+
+  btn.addEventListener("mouseleave",()=>{
+    document.getElementById("description").innerText =
+      "No description";
+  });
+
+  elementSections[section].buttons.push(btn);
+
+  if(section===currentSection){
+    document.getElementById("elements").appendChild(btn);
+  }
+}
+
+/* ELEMENTS */
+
+addElement("sparks", {
+  color: () => "#ffffff",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    if (!p.life || p.life > 10) p.life = 3 + Math.floor(Math.random()*3);
+
+    p.life--;
+    if (p.life <= 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    // Move using stored velocity
+    let nx = x + (p.vx || 0);
+    let ny = y + (p.vy || 0);
+
+    if (inBounds(nx, ny) && grid[ny][nx].type === "air") {
+      swap(x, y, nx, ny);
+      grid[ny][nx].updated = true;
+    }
+
+    // Slight upward drift
+    if (Math.random() < 0.3) p.vy -= 1;
+  },
+
+  description: "Fast white sparks that shoot outward."
+}, "Explosives");
+
+addElement("plasma", {
+  color: p => `rgb(${255}, ${Math.floor(100 + Math.random()*100)}, ${255})`,
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // 🔥 Initialize
+    if (!p.life) p.life = 20;
+    if (!p.temp) p.temp = 9000;
+
+    // Keep extremely hot
+    p.temp = 9000;
+
+    // ⏳ Lifetime
+    p.life--;
+    if (p.life <= 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    // 🔥 Heat nearby pixels (no smoke generation)
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+      n.temp += 200; // intense heat transfer
+    }
+
+    // ⚡ Movement (fast, energetic gas)
+
+    // Prefer moving upward
+    if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+      if (Math.random() < 0.6) {
+        swap(x, y, x, y-1);
+        grid[y-1][x].updated = true;
+        return;
+      }
+    }
+
+    // Random sideways movement
+    let dir = Math.random() < 0.5 ? -1 : 1;
+    if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+      swap(x, y, x+dir, y);
+      grid[y][x+dir].updated = true;
+    }
+  },
+
+  description: "Plasma at 9000°C. Extremely hot, short-lived, and produces no smoke."
+}, "Gases");
+
+addElement("cold_fire", {
+  color: p => `rgb(${Math.floor(100 + Math.random()*50)}, ${Math.floor(200 + Math.random()*55)}, 255)`,
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Initialize
+    if (!p.life) p.life = 30;
+    if (!p.temp) p.temp = -100;
+
+    // Lifespan
+    p.life--;
+    if (p.life <= 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    // Freeze nearby pixels instead of igniting
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+
+      // Freeze liquids into ice
+      if (n.type === "water" || n.type === "steam") {
+        grid[ny][nx] = createPixel("ice");
+        grid[ny][nx].temp = -50;
+      }
+
+      // Cool other elements slightly
+      n.temp -= 20;
+    }
+
+    // Movement: slowly rises like fire
+    if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+      swap(x, y, x, y-1);
+      grid[y-1][x].updated = true;
+      return;
+    }
+
+    // Small sideways movement
+    let dir = Math.random() < 0.5 ? -1 : 1;
+    if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+      swap(x, y, x+dir, y);
+      grid[y][x+dir].updated = true;
+    }
+  },
+
+  description: "Cold fire at -100°C. Freezes surroundings instead of burning them."
+}, "Gases");
+
+addElement("detCord", {
+  color: p => p.burning ? "#ffcc66" : "#444444",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    if (!p.burning) p.burning = false;
+
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1]
+    ];
+
+    // 🔥 Ignite if touching fire/lava
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+      if (n.type === "fire" || n.type === "lava") {
+        p.burning = true;
+      }
+    }
+
+    // 🔥 Burning behavior
+    if (p.burning) {
+
+      p.temp = 600;
+
+      // Spread ONLY to other cord (fast but controlled)
+      for (let d of neighbors) {
+        let nx = x + d[0], ny = y + d[1];
+        if (!inBounds(nx, ny)) continue;
+
+        let n = grid[ny][nx];
+
+        if (n.type === "detCord" && !n.burning) {
+          if (Math.random() < 0.9) { // very fast spread
+            n.burning = true;
+          }
+        }
+      }
+
+      // 🔥 Mild interaction with surroundings (NOT instant)
+      for (let d of neighbors) {
+        let nx = x + d[0], ny = y + d[1];
+        if (!inBounds(nx, ny)) continue;
+
+        let n = grid[ny][nx];
+
+        // Small chance to ignite flammable materials
+        if (["wood","grass"].includes(n.type) && Math.random() < 0.05) {
+          grid[ny][nx] = createPixel("fire");
+          grid[ny][nx].life = 20;
+        }
+
+        // Small chance to trigger explosives
+        if (["explosive","nuke"].includes(n.type) && Math.random() < 0.1) {
+          grid[ny][nx] = createPixel("fire");
+        }
+      }
+
+      // Leave a fast-moving burn trail
+      if (Math.random() < 0.6) {
+        grid[y][x] = createPixel("fire");
+        grid[y][x].life = 8;
+      } else {
+        grid[y][x] = createPixel("smoke");
+        grid[y][x].life = 15;
+      }
+
+      return;
+    }
+  },
+
+  description: "Detonating cord. Burns very fast along itself without instantly igniting everything around it."
+}, "Explosives");
+
+addElement("oil", {
+  color: p => "#2b1b0f",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // 🔥 Temperature ignition
+    if (p.temp > 200) {
+      grid[y][x] = createPixel("fire");
+      grid[y][x].life = 40;
+      return;
+    }
+
+    // 🔥 Catch fire from neighbors
+    const neighbors = [[1,0],[-1,0],[0,1],[0,-1]];
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+      if (n.type === "fire" && Math.random() < 0.2) {
+        grid[y][x] = createPixel("fire");
+        grid[y][x].life = 40;
+        return;
+      }
+    }
+
+    // 🛢️ WATER-LIKE MOVEMENT
+
+    let below = grid[y+1]?.[x];
+
+    // Fall like water
+    if (below?.type === "air" || below?.type === "steam") {
+      swap(x, y, x, y+1);
+      return;
+    }
+
+    // Float on water (swap places)
+    if (below?.type === "water") {
+      swap(x, y, x, y+1);
+      return;
+    }
+
+    // Spread sideways like water
+    let dir = Math.random() < 0.5 ? -1 : 1;
+    if (grid[y]?.[x+dir]?.type === "air" || grid[y]?.[x+dir]?.type === "steam") {
+      swap(x, y, x+dir, y);
+    }
+  },
+
+  description: "Oil behaves like water but floats on it and burns easily."
+}, "Liquids");
+
+addElement("glass", {
+  color: () => "#a0d8ff",
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Melt into lava if very hot
+    if (p.temp >= 600) { // glass melting point
+      let lavaPixel = createPixel("lava");
+      lavaPixel.temp = p.temp;
+      grid[y][x] = lavaPixel;
+    }
+  },
+  description: "Glass, solid and static, melts into lava if hot enough."
+}, "Solids");
+
+addElement("explosive", {
+  color: () => "red",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Falls like sand
+    let below = grid[y+1]?.[x];
+    if (below && (below.type === "air" || below.type === "water")) {
+      swap(x, y, x, y+1);
+    }
+
+    // Explode if touched by fire
+    const neighbors = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      if (grid[ny][nx].type === "fire") {
+        explode(x, y);
+        return;
+      }
+    }
+
+    // Explosion
+    function explode(cx, cy) {
+
+      const radius = 18;
+
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+
+          let nx = cx + dx;
+          let ny = cy + dy;
+
+          if (!inBounds(nx, ny)) continue;
+
+          let dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist > radius) continue;
+
+          // Fire core
+          if (Math.random() < 0.6) {
+            grid[ny][nx] = createPixel("fire");
+            grid[ny][nx].life = 30 + Math.floor(Math.random()*20);
+            grid[ny][nx].temp = 500;
+          }
+
+          // Sparks shooting outward
+          if (Math.random() < 0.5) {
+            let s = createPixel("sparks");
+            s.life = 2 + Math.floor(Math.random()*3);
+            s.vx = Math.sign(dx);
+            s.vy = Math.sign(dy);
+            grid[ny][nx] = s;
+          }
+
+        }
+      }
+
+      grid[cy][cx] = createPixel("air");
+    }
+  },
+
+  description: "Explosive, falls and detonates when ignited, blasting sparks outward."
+}, "Explosives");
+
+addElement("iron", {   // <-- this is a new statement, needs to be after previous one ends
+  color: () => "darkgrey",
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Melt into lava if very hot
+    if (p.temp >= 1500) {
+      let lavaPixel = createPixel("lava");
+      lavaPixel.temp = p.temp;
+      grid[y][x] = lavaPixel;
+      return;
+    }
+
+    // Heat diffusion like stone
+    const neighbors = [[0,1],[0,-1],[1,0],[-1,0]];
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+      let n = grid[ny][nx];
+      n.temp += (p.temp - n.temp) * 0.1;
+    }
+  },
+  description: "Iron, solid and static, melts into lava if hot enough. Non-conductive."
+}, "Solids"); // <-- semicolon here
+
+addElement("plastic", {
+  color: () => "lightgreen",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Plastic melts when hot
+    if (p.temp >= 180) {
+      let melt = createPixel("meltedplastic");
+      melt.temp = p.temp;
+      grid[y][x] = melt;
+      return;
+    }
+
+    // Heat conduction
+    const neighbors = [[0,1],[0,-1],[1,0],[-1,0]];
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+      n.temp += (p.temp - n.temp) * 0.08;
+    }
+  },
+
+  description: "Plastic, solid and non-flammable. Melts into melted plastic when hot."
+}, "Solids");
+
+addElement("cloud", {
+  color: p => `rgba(220,220,220,${0.65 + Math.random()*0.15})`,
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Init life
+    if (!p.life) p.life = 100;
+
+    // Match air temp slowly
+    p.temp += (airTemperature - p.temp) * 0.01;
+
+    // Count nearby clouds (for cohesion)
+    let neighbors = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+    let cloudNeighbors = 0;
+
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+      if (grid[ny][nx].type === "cloud") cloudNeighbors++;
+    }
+
+    // 🌧️ Rain (more likely if big cloud)
+    if (Math.random() < 0.0008 + cloudNeighbors * 0.0003) {
+      if (inBounds(x, y+1) && grid[y+1][x].type === "air") {
+        let rain = createPixel("water");
+        rain.temp = p.temp;
+        grid[y+1][x] = rain;
+      }
+    }
+
+    // ☁️ Strong cohesion: big clouds live longer
+    p.life += cloudNeighbors * 0.02;
+
+    // 🌫️ Dissipate faster if alone
+    if (cloudNeighbors <= 1) {
+      p.life -= 0.08; // lonely clouds die fast
+    } else {
+      p.life -= 0.02;
+    }
+
+    if (p.life <= 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    // 🧠 MOVEMENT LOGIC (KEY PART)
+
+    // Big clouds = almost no movement
+    if (cloudNeighbors >= 4) {
+      return; // stay locked in place
+    }
+
+    // Medium clouds = very slight drift
+    if (cloudNeighbors >= 2) {
+      if (Math.random() < 0.02) {
+        let dir = Math.random() < 0.5 ? -1 : 1;
+        if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+          swap(x, y, x+dir, y);
+          grid[y][x+dir].updated = true;
+        }
+      }
+      return;
+    }
+
+    // Small clouds = can move more (but still slow)
+
+    // Rare upward drift
+    if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+      if (Math.random() < 0.02) {
+        swap(x, y, x, y-1);
+        grid[y-1][x].updated = true;
+        return;
+      }
+    }
+
+    // Slight sideways drift
+    if (Math.random() < 0.05) {
+      let dir = Math.random() < 0.5 ? -1 : 1;
+      if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+        swap(x, y, x+dir, y);
+        grid[y][x+dir].updated = true;
+      }
+    }
+  },
+
+  description: "Clouds stick together. Large clouds stay stable and produce more rain."
+}, "Gases");
+
+addElement("meltedplastic", {
+  color: () => "#66ff66",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Flow like thick liquid
+    let below = grid[y+1]?.[x];
+    if (below && below.type === "air") {
+      swap(x, y, x, y+1);
+      grid[y+1][x].updated = true;
+      return;
+    }
+
+    // Spread sideways slowly
+    let dir = Math.random() < 0.5 ? -1 : 1;
+    if (grid[y]?.[x+dir]?.type === "air") {
+      swap(x, y, x+dir, y);
+      grid[y][x+dir].updated = true;
+    }
+
+    // Harden back into plastic if cool
+    if (p.temp < 120) {
+      let solid = createPixel("plastic");
+      solid.temp = p.temp;
+      grid[y][x] = solid;
+    }
+  },
+
+  description: "Melted plastic. Thick liquid that flows slowly and hardens when cooled."
+}, "Liquids");
+
+addElement("air", {
+  color: p => `rgb(${20+p.temp/8},20,30)`,
+  update(x,y,p){
+    let diff = airTemperature - p.temp;
+    p.temp += diff*0.02;
+  },
+  description: "Air, conducts heat too, nothing else said."
+}, "Environment");
+
+
+addElement("sand", { 
+  color: p => { 
+    let wetDark = p.wet * 100; 
+    return `rgb(${200 - wetDark}, ${180 - wetDark / 2}, 100)`; 
+  },
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Absorb nearby water
+    if (p.wet < 1) {
+      const neighbors = [
+        [0,1],[0,-1],[1,0],[-1,0],
+        [1,1],[-1,1],[1,-1],[-1,-1]
+      ];
+
+      neighbors.forEach(d => {
+        let nx = x + d[0];
+        let ny = y + d[1];
+
+        if (inBounds(nx, ny)) {
+          let n = grid[ny][nx];
+          if (n.type === "water") {
+            p.wet = Math.min(1, p.wet + 0.05);
+            grid[ny][nx] = createPixel("air");
+          }
+        }
+      });
+    }
+
+    // Dry when hot
+    if (p.wet > 0 && p.temp > 50) {
+      p.wet -= 0.01;
+      if (p.wet < 0) p.wet = 0;
+    }
+
+    // Fall straight down
+    if (inBounds(x, y + 1)) {
+      let below = grid[y + 1][x];
+      if (below.type === "air" || below.type === "water") {
+        swap(x, y, x, y + 1);
+        grid[y + 1][x].updated = true;
+        return;
+      }
+    }
+
+    // Try diagonals
+    let dirs = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+
+    for (let dir of dirs) {
+      if (inBounds(x + dir, y + 1)) {
+        let diag = grid[y + 1][x + dir];
+        if (diag.type === "air" || diag.type === "water") {
+          swap(x, y, x + dir, y + 1);
+          grid[y + 1][x + dir].updated = true;
+          return;
+        }
+      }
+    }
+  },
+
+  description: "Sand absorbs water, dries when hot, and falls like real sand."
+}, "Powders");
+
+addElement("water",{
+  color:p=>"#3399ff",
+  update(x,y,p){
+
+// 🐟 Spawn water critters ONLY near sand
+if (Math.random() < 0.0004) {
+
+  const neighbors = [
+    [1,0],[-1,0],[0,1],[0,-1]
+  ];
+
+  let touchingSand = false;
+
+  for (let d of neighbors) {
+    let nx = x + d[0];
+    let ny = y + d[1];
+
+    if (inBounds(nx, ny) && grid[ny][nx].type === "sand") {
+      touchingSand = true;
+      break;
+    }
+  }
+
+  if (touchingSand) {
+    grid[y][x] = createPixel("waterCritter");
+    return;
+  }
+}
+
+    if (p.temp < 0) {
+      grid[y][x] = createPixel("ice");
+      grid[y][x].temp = p.temp;
+      return;
+    }
+    if(p.temp>=100){ 
+      grid[y][x]=createPixel("steam"); 
+      grid[y][x].temp = p.temp; 
+      return; 
+    }
+    let below=grid[y+1]?.[x];
+    if(below?.type==="air") swap(x,y,x,y+1);
+    else { let dir=Math.random()<0.5?-1:1; if(grid[y]?.[x+dir]?.type==="air") swap(x,y,x+dir,y); }
+  },
+  description: "Water, gets stuff wet."
+}, "Liquids");
+
+addElement("steam",{ 
+  color:p=>"lightblue",
+  update(x,y,p){ 
+    if(p.updated) return;
+    
+    // Condense first if temp <= 100
+    if(p.temp <= 100){ 
+      grid[y][x] = createPixel("water");
+      grid[y][x].temp = p.temp;
+      grid[y][x].updated = true;
+      return; // stop all further processing
+    }
+
+    // Mark as updated for this frame
+    p.updated=true;
+
+    // Move upward if possible
+    if(inBounds(x,y-1) && grid[y-1][x].type==="air") { 
+      swap(x,y,x,y-1); 
+      grid[y-1][x].updated=true; 
+      return; 
+    }
+
+    // Move sideways if blocked
+    let dir = Math.random()<0.5?-1:1;
+    if(inBounds(x+dir,y) && grid[y][x+dir].type==="air"){ 
+      swap(x,y,x+dir,y); 
+      grid[y][x+dir].updated=true; 
+    }
+  },
+description: "Basically boiled water."
+}, "Gases");
+
+addElement("fire", { 
+  color: () => "orange",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    p.temp = 500;
+
+// Create smoke
+if (Math.random() < 0.25) {
+  if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+    grid[y-1][x] = createPixel("smoke");
+    grid[y-1][x].life = 80;
+  }
+}
+
+    // Fire lifetime (~2 seconds)
+    p.life -= 3;
+    if (p.life <= 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    const burnable = ["grass","wood"];
+
+    const neighbors = [
+      [0,1],[0,-1],[1,0],[-1,0],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    // Spread slowly to burnable materials
+    neighbors.forEach(d => {
+      let nx = x + d[0];
+      let ny = y + d[1];
+
+      if (!inBounds(nx, ny)) return;
+
+      let n = grid[ny][nx];
+
+      if (burnable.includes(n.type)) {
+
+        // Place fire ON TOP of the material
+        if (inBounds(nx, ny-1) && grid[ny-1][nx].type === "air") {
+          if (Math.random() < 0.03) {
+            grid[ny-1][nx] = createPixel("fire");
+            grid[ny-1][nx].life = 120;
+          }
+        }
+
+        // Burn the material itself after a delay
+        if (Math.random() < 0.01) {
+          grid[ny][nx] = createPixel("fire");
+          grid[ny][nx].life = 90;
+        }
+      }
+    });
+
+    // Only rise if NOT sitting on a flammable material
+    let below = grid[y+1]?.[x];
+
+    if (!below || !burnable.includes(below.type)) {
+
+      if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+        swap(x, y, x, y-1);
+        grid[y-1][x].updated = true;
+        return;
+      }
+
+      let dir = Math.random() < 0.5 ? -1 : 1;
+      if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+        swap(x, y, x+dir, y);
+        grid[y][x+dir].updated = true;
+      }
+
+    }
+  },
+
+  description: "Fire spreads slowly and burns flammable materials."
+}, "Explosives");
+
+addElement("smoke", {
+  color: p => `rgba(120,120,120,${0.3 + Math.random()*0.2})`,
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Smoke lifetime
+    p.life--;
+    if (p.life <= 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    // Rise upward
+    if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+      swap(x, y, x, y-1);
+      grid[y-1][x].updated = true;
+      return;
+    }
+
+    // Drift sideways
+    let dir = Math.random() < 0.5 ? -1 : 1;
+    if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+      swap(x, y, x+dir, y);
+      grid[y][x+dir].updated = true;
+    }
+  },
+
+  description: "Smoke rises into the air and slowly fades away."
+}, "Explosives");
+
+addElement("stone",{ color:p=>p.temp>400?"orange":p.temp>250?"red":"gray" }, "Solids");
+
+addElement("lava",{ 
+  color: p => "red",
+  update(x, y, p){
+    if(p.updated) return;
+    p.updated = true;
+
+    const lavaSolidTemp = 500;
+    let below = grid[y+1]?.[x];
+
+    // Lava falls if possible
+    if(below && (below.type === "air" || below.type === "water")){
+      swap(x, y, x, y+1);
+      grid[y+1][x].updated = true;
+      return;
+    }
+
+    // Melt neighbors if hot
+    [[1,0],[-1,0],[0,1],[0,-1]].forEach(d=>{
+      let nx = x + d[0], ny = y + d[1];
+      if(inBounds(nx,ny)){
+        let n = grid[ny][nx];
+        if(n.type === "stone" && n.temp >= 500){ 
+          grid[ny][nx] = createPixel("lava"); 
+          grid[ny][nx].origin = "stone"; 
+        }
+        if(n.type === "sand" && n.temp >= 400){ 
+          grid[ny][nx] = createPixel("lava"); 
+          grid[ny][nx].origin = "sand"; 
+        }
+
+        // **Spawn fire on air or flammable neighbors**
+        if((n.type === "air" || n.type === "grass" || n.type === "soil") && Math.random() < 0.02){
+          grid[ny][nx] = createPixel("fire");
+          grid[ny][nx].life = Math.floor(Math.random() * 20 + 20);
+          grid[ny][nx].temp = 500;
+        }
+      }
+    });
+
+    // Cool naturally
+    p.temp += (airTemperature - p.temp) * 0.001;
+
+    // Solidify after stopping
+    if(p.temp < lavaSolidTemp){
+      let solidType = p.origin || "stone";
+      grid[y][x] = createPixel(solidType);
+      grid[y][x].temp = p.temp;
+      grid[y][x].updated = true;
+    }
+  },
+  description: "Lava, melts materials and sometimes sets them on fire."
+}, "Liquids");
+
+addElement("solidExplosive", {
+  color: () => "#aa0000", // darker red so it looks solid
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // ❌ NO falling (this is the only difference)
+
+    // 💥 Explode if touched by fire
+    const neighbors = [
+      [0,1],[0,-1],[1,0],[-1,0],
+      [1,1],[1,-1],[-1,1],[-1,-1]
+    ];
+
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      if (grid[ny][nx].type === "fire") {
+        explode(x, y);
+        return;
+      }
+    }
+
+    function explode(cx, cy) {
+
+      const radius = 18;
+
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+
+          let nx = cx + dx;
+          let ny = cy + dy;
+
+          if (!inBounds(nx, ny)) continue;
+
+          let dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist > radius) continue;
+
+          // Fire core
+          if (Math.random() < 0.6) {
+            grid[ny][nx] = createPixel("fire");
+            grid[ny][nx].life = 30 + Math.floor(Math.random()*20);
+            grid[ny][nx].temp = 500;
+          }
+
+          // Sparks
+          if (Math.random() < 0.5) {
+            let s = createPixel("sparks");
+            s.life = 2 + Math.floor(Math.random()*3);
+            s.vx = Math.sign(dx);
+            s.vy = Math.sign(dy);
+            grid[ny][nx] = s;
+          }
+        }
+      }
+
+      grid[cy][cx] = createPixel("air");
+    }
+  },
+
+  description: "Solid explosive. Does not fall, but explodes when ignited."
+}, "Explosives");
+
+/* SOIL, MUD, GRASS */
+addElement("soil", {
+  color: p => {
+    const wetFactor = Math.min(1, p.wet);
+    const r = Math.floor(139 - 60 * wetFactor);
+    const g = Math.floor(69 - 30 * wetFactor);
+    const b = 19;
+    return `rgb(${r},${g},${b})`;
+  },
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Absorb water from neighbors
+    const neighbors = [
+      [0, 1], [0, -1], [1, 0], [-1, 0],
+      [1, 1], [-1, 1], [1, -1], [-1, -1]
+    ];
+
+    neighbors.forEach(d => {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) return;
+      let n = grid[ny][nx];
+      if (n.type === "water") {
+        const absorbed = Math.min(1 - p.wet, 0.05);
+        p.wet += absorbed;
+        n.wet = Math.max(0, n.wet - absorbed);
+        if (n.wet <= 0) n.type = "air";
+      }
+
+      // Spread wetness from neighboring wet soil
+      if (n.type === "soil" && n.wet > p.wet + 0.01) {
+        const transfer = (n.wet - p.wet) * 0.1;
+        p.wet = Math.min(1, p.wet + transfer);
+        n.wet -= transfer;
+      }
+    });
+
+    // Dry out if hot naturally
+    if (p.temp > 50 && p.wet > 0) {
+      p.wet -= 0.002;
+      if (p.wet < 0) p.wet = 0;
+    }
+
+    // **Fire interaction:** release water if soil is hot enough
+    if (p.temp >= 300 && p.wet > 0) { 
+      let above = grid[y - 1]?.[x];
+      if (above && above.type === "air") {
+        // Create a water pixel above soil
+        grid[y - 1][x] = createPixel("water");
+        grid[y - 1][x].wet = Math.min(1, p.wet); // transfer some wetness
+        // Reduce soil wetness accordingly
+        p.wet *= 0.5; 
+      }
+    }
+
+    // 🌍 Fall like sand
+
+// Fall straight down
+if (inBounds(x, y + 1)) {
+  let below = grid[y + 1][x];
+  if (below.type === "air" || below.type === "water") {
+    swap(x, y, x, y + 1);
+    grid[y + 1][x].updated = true;
+    return;
+  }
+}
+
+// Try diagonal movement
+let dirs = Math.random() < 0.5 ? [-1, 1] : [1, -1];
+
+for (let dir of dirs) {
+  if (inBounds(x + dir, y + 1)) {
+    let diag = grid[y + 1][x + dir];
+    if (diag.type === "air" || diag.type === "water") {
+      swap(x, y, x + dir, y + 1);
+      grid[y + 1][x + dir].updated = true;
+      return;
+    }
+  }
+}
+  },
+description: "Soil, can support grass when wet enough, best for grass at 0.60 wetness."
+}, "Powders");
+
+addElement("grass", {
+  color: p => `rgb(0,${Math.floor(200 * p.life / 100)},0)`,
+  update(x, y, p) {
+    let below = grid[y + 1]?.[x];
+
+    // Grass dies if no soil below
+    if (!below || below.type !== "soil" || below.wet < 0.3) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+// 🌱 Spawn grass critters (rare)
+if (Math.random() < 0.0004) {
+  if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+    grid[y-1][x] = createPixel("grassCritter");
+  }
+}
+
+    // Grow health
+    p.life = Math.min(100, p.life + 0.5); 
+
+    // Spread to air above soil
+    const neighbors = [
+      [1, 0], [-1, 0], [0, -1], [0, 1],
+      [1, 1], [-1, 1], [1, -1], [-1, -1]
+    ];
+
+    neighbors.forEach(d => {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) return;
+
+      let n = grid[ny][nx];
+      let soilBelow = grid[ny + 1]?.[nx];
+
+      // Only grow grass if the target cell is air **and** soil is underneath
+      if (n.type === "air" && soilBelow?.type === "soil" && soilBelow.wet > 0.3 && Math.random() < 0.02) {
+        grid[ny][nx] = createPixel("grass");
+      }
+    });
+  },
+description: "Grass, grows on wet enough soil, basic plant."
+}, "Plants");
+
+addElement("coldLiquid", {
+  color: p => "cyan", // bright cyan for visibility
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Disappear if temperature rises above 0°C
+    if (p.temp > 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    // Cool neighboring pixels to -273°C
+    [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]].forEach(d => {
+      let nx = x + d[0], ny = y + d[1];
+      if (inBounds(nx, ny)) {
+        let n = grid[ny][nx];
+        n.temp = -273;
+      }
+    });
+
+    // Flow downward if possible
+    let below = grid[y+1]?.[x];
+    if (below && (below.type === "air" || below.type === "water")) {
+      swap(x, y, x, y+1);
+      grid[y+1][x].updated = true;
+      return;
+    }
+
+    // Flow sideways randomly if blocked
+    let dirs = Math.random() < 0.5 ? [-1,1] : [1,-1];
+    for (let dir of dirs) {
+      let side = grid[y]?.[x+dir];
+      if (side && (side.type === "air" || side.type === "water")) {
+        swap(x, y, x+dir, y);
+        grid[y][x+dir].updated = true;
+        return;
+      }
+    }
+  },
+  description: "A super cold liquid, instantly freezes anything it touches, disappears above 0°C."
+}, "Liquids");
+
+addElement("ice", {
+  color: p => "#a0c8ff",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // 🔥 Heat exchange with air
+    let diff = airTemperature - p.temp;
+    p.temp += diff * 0.02;
+
+    // 💧 Melt if above 0°C
+    if (p.temp > 0) {
+      let newPixel = createPixel("water");
+      newPixel.temp = p.temp;
+      grid[y][x] = newPixel;
+      return;
+    }
+
+    // Optional slow cooling if near freezing
+    if (p.temp > -5) {
+      p.temp -= 0.01;
+    }
+  },
+
+  description: "Ice, freezes below 0°C, melts above 0°C."
+}, "Solids");
+
+addElement("wood", {
+  color: p => {
+    // Slight color change when hot
+    if (p.temp > 300) return "#5a2e0a";
+    if (p.temp > 150) return "#7a3e12";
+    return "#8b5a2b";
+  },
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Ignite if very hot
+    if (p.temp > 300) {
+      grid[y][x] = createPixel("fire");
+      grid[y][x].life = 40;
+      grid[y][x].temp = 500;
+      return;
+    }
+
+    // Check neighbors for fire or lava
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+
+      if (inBounds(nx, ny)) {
+        let n = grid[ny][nx];
+
+        if (n.type === "fire" || n.type === "lava") {
+          if (Math.random() < 0.05) {
+            grid[y][x] = createPixel("fire");
+            grid[y][x].life = 40;
+            grid[y][x].temp = 500;
+            return;
+          }
+        }
+      }
+    }
+  },
+
+  description: "Wood, a solid that burns when exposed to fire or lava."
+}, "Solids");
+
+addElement("grassCritter", {
+  color: () => "#66ff66",
+
+ update(x, y, p) {
+  if (p.updated) return;
+  p.updated = true;
+
+  if (!p.life) p.life = 200;
+  p.life--;
+
+  if (p.life <= 0) {
+    grid[y][x] = createPixel("air");
+    return;
+  }
+
+  // 🌱 Check if touching ANY grass
+  let touchingGrass = false;
+
+// Check ALL 8 directions (more reliable)
+const neighbors = [
+  [1,0],[-1,0],[0,1],[0,-1],
+  [1,1],[-1,1],[1,-1],[-1,-1]
+];
+
+for (let d of neighbors) {
+  let nx = x + d[0];
+  let ny = y + d[1];
+
+  if (inBounds(nx, ny) && grid[ny][nx].type === "grass") {
+    touchingGrass = true;
+    break;
+  }
+}
+
+// ✅ Grace buffer so they don’t instantly die
+if (!touchingGrass) {
+  p.grace = (p.grace || 5) - 1;
+
+  if (p.grace <= 0) {
+    grid[y][x] = createPixel("air");
+    return;
+  }
+} else {
+  p.grace = 5; // reset when safe
+}
+
+  // ❌ Die if not touching grass
+  if (!touchingGrass) {
+    grid[y][x] = createPixel("air");
+    return;
+  }
+
+  // Wander
+  let dir = Math.random() < 0.5 ? -1 : 1;
+  if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+    swap(x, y, x+dir, y);
+    grid[y][x+dir].updated = true;
+  }
+},
+
+  description: "Tiny creature that lives on grass."
+}, "Life");
+
+addElement("waterCritter", {
+  color: () => "#000000",
+
+  update(x, y, p) {
+  if (p.updated) return;
+  p.updated = true;
+
+  if (!p.life) p.life = 250;
+  p.life--;
+
+  if (p.life <= 0) {
+    grid[y][x] = createPixel("water");
+    return;
+  }
+
+  // 🌊 Check if touching ANY water
+  let touchingWater = false;
+
+const neighbors = [
+  [1,0],[-1,0],[0,1],[0,-1],
+  [1,1],[-1,1],[1,-1],[-1,-1]
+];
+
+for (let d of neighbors) {
+  let nx = x + d[0];
+  let ny = y + d[1];
+
+  if (inBounds(nx, ny) && grid[ny][nx].type === "water") {
+    touchingWater = true;
+    break;
+  }
+}
+
+// ✅ Grace buffer
+if (!touchingWater) {
+  p.grace = (p.grace || 5) - 1;
+
+  if (p.grace <= 0) {
+    grid[y][x] = createPixel("air"); // or "water"
+    return;
+  }
+} else {
+  p.grace = 5;
+}
+
+  // ❌ Die if not touching water
+  if (!touchingWater) {
+    grid[y][x] = createPixel("air"); // or "water" if you prefer
+    return;
+  }
+
+  // Fall like water
+  let below = grid[y+1]?.[x];
+  if (below && below.type === "air") {
+    swap(x, y, x, y+1);
+    grid[y+1][x].updated = true;
+    return;
+  }
+
+  // Swim
+  let dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  let d = dirs[Math.floor(Math.random()*dirs.length)];
+
+  let nx = x + d[0];
+  let ny = y + d[1];
+
+  if (inBounds(nx, ny) && (grid[ny][nx].type === "water" || grid[ny][nx].type === "air")) {
+    swap(x, y, nx, ny);
+    grid[ny][nx].updated = true;
+    return;
+  }
+
+  // Spread sideways
+  let dir = Math.random() < 0.5 ? -1 : 1;
+  if (inBounds(x+dir, y) && grid[y][x+dir].type === "air") {
+    swap(x, y, x+dir, y);
+    grid[y][x+dir].updated = true;
+  }
+},
+
+  description: "A small black fish-like creature that swims in water."
+}, "Life");
+
+addElement("nuke", {
+  color: () => "#00ff00",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Falls like explosive
+    let below = grid[y+1]?.[x];
+    if (below && (below.type === "air" || below.type === "water")) {
+      swap(x, y, x, y+1);
+      return;
+    }
+
+    // Trigger when touching fire
+    const neighbors = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      if (grid[ny][nx].type === "fire") {
+        explode(x, y);
+        return;
+      }
+    }
+
+    function explode(cx, cy) {
+
+      const radius = 70;
+
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+
+          let nx = cx + dx;
+          let ny = cy + dy;
+
+          if (!inBounds(nx, ny)) continue;
+
+          let dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist > radius) continue;
+
+          // HOT FIRE CORE
+          if (Math.random() < 0.7) {
+            let f = createPixel("fire");
+            f.life = 60 + Math.random()*40;
+            f.temp = 1200;
+            grid[ny][nx] = f;
+          }
+
+          // LOTS OF SPARKS
+          if (Math.random() < 0.5) {
+            let s = createPixel("sparks");
+            s.life = 4 + Math.floor(Math.random()*6);
+
+            let angle = Math.atan2(dy, dx);
+            s.vx = Math.round(Math.cos(angle) * 2);
+            s.vy = Math.round(Math.sin(angle) * 2);
+
+            grid[ny][nx] = s;
+          }
+
+          // HEAT EVERYTHING
+          grid[ny][nx].temp = 1500;
+        }
+      }
+
+      // remove nuke
+      grid[cy][cx] = createPixel("air");
+    }
+  },
+
+  description: "NUCLEAR EXPLOSION. Massive fireball and sparks everywhere."
+}, "Explosives");
+
+addElement("flammable_plastic", {
+  color: p => {
+    if (p.burning) return "#ff9933";
+    if (p.temp > 180) return "#5cd65c";
+    return "#33cc66";
+  },
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    if (!p.burning) p.burning = false;
+
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    // 🔥 Ignite from temperature (smolder)
+    if (p.temp > 220 && Math.random() < 0.03) {
+      p.burning = true;
+    }
+
+    // 🔥 Ignite from nearby fire/lava
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+
+      if (n.type === "fire" || n.type === "lava") {
+        if (Math.random() < 0.15) {
+          p.burning = true;
+        }
+      }
+    }
+
+    // 🔥 Instant ignition if extremely hot
+    if (p.temp > 350) {
+      grid[y][x] = createPixel("fire");
+      grid[y][x].life = 60;
+      grid[y][x].temp = 500;
+      return;
+    }
+
+    // 🔥 Burning behavior (wood-like)
+    if (p.burning) {
+
+      p.temp += 12;
+
+      // Fire above
+      if (Math.random() < 0.1) {
+        if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+          let f = createPixel("fire");
+          f.life = 35;
+          grid[y-1][x] = f;
+        }
+      }
+
+      // Smoke
+      if (Math.random() < 0.15) {
+        if (inBounds(x, y-1) && grid[y-1][x].type === "air") {
+          let s = createPixel("smoke");
+          s.life = 70;
+          grid[y-1][x] = s;
+        }
+      }
+
+      // Drip melted plastic
+      if (Math.random() < 0.15) {
+        if (inBounds(x, y+1) && grid[y+1][x].type === "air") {
+          let melt = createPixel("meltedplastic");
+          melt.temp = p.temp;
+          grid[y+1][x] = melt;
+        }
+      }
+
+      // Eventually becomes fire
+      if (Math.random() < 0.02) {
+        grid[y][x] = createPixel("fire");
+        grid[y][x].life = 80;
+        return;
+      }
+    }
+
+    // 🔥 Melt if hot but not burning
+    if (!p.burning && p.temp > 150) {
+      if (Math.random() < 0.02) {
+        let melt = createPixel("meltedplastic");
+        melt.temp = p.temp;
+        grid[y][x] = melt;
+        return;
+      }
+    }
+
+    // Heat conduction
+    for (let d of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+      n.temp += (p.temp - n.temp) * 0.05;
+    }
+  },
+
+  description: "Flammable plastic. Ignites from heat or fire, burns like wood, and drips when burning."
+}, "Solids");
+
+/* UPDATE LOOP */
+function update(){
+  if(paused) return;
+  for(let y=0;y<HEIGHT;y++) for(let x=0;x<WIDTH;x++) grid[y][x].updated = false;
+
+  for(let y=HEIGHT-1;y>=0;y--){
+    for(let x=0;x<WIDTH;x++){
+      let p=grid[y][x];
+      if(["sand","soil","water","stone","lava", "grass", "coldLiquid", "ice", "smoke", "sparks", "explosive", "iron", "plastic", "glass", "plastic", "meltedplastic", "nuke", "wood", "cloud", "detCord", "oil", "plasma", "cold_fire", "waterCritter", "grassCritter", "solidExplosive", "flammable_plastic"].includes(p.type)) elements[p.type].update?.(x,y,p);
+    }
+  }
+
+  for(let y=HEIGHT-1;y>=0;y--){
+    for(let x=0;x<WIDTH;x++){
+      let p=grid[y][x];
+      if(["steam","fire"].includes(p.type)) elements[p.type].update?.(x,y,p);
+    }
+  }
+
+  // Temperature diffusion
+  for(let y=0;y<HEIGHT;y++){
+    for(let x=0;x<WIDTH;x++){
+      let p=grid[y][x], total=p.temp, count=1;
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(d=>{
+        let nx=x+d[0], ny=y+d[1]; 
+        if(inBounds(nx,ny)){ total+=grid[ny][nx].temp; count++; }
+      });
+      p.temp += (total/count - p.temp)*0.1;
+    }
+  }
+}
+
+/* DRAW */
+let mouseX=0, mouseY=0;
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  for(let y=0;y<HEIGHT;y++){
+    for(let x=0;x<WIDTH;x++){
+      ctx.fillStyle=elements[grid[y][x].type].color(grid[y][x]);
+      ctx.fillRect(x*SIZE,y*SIZE,SIZE,SIZE);
+    }
+  }
+  ctx.strokeStyle="#222";
+  for(let x=0;x<WIDTH;x++){ ctx.beginPath(); ctx.moveTo(x*SIZE,0); ctx.lineTo(x*SIZE,canvas.height); ctx.stroke(); }
+  for(let y=0;y<HEIGHT;y++){ ctx.beginPath(); ctx.moveTo(0,y*SIZE); ctx.lineTo(canvas.width,y*SIZE); ctx.stroke(); }
+  ctx.strokeStyle="white";
+  ctx.strokeRect(mouseX*SIZE, mouseY*SIZE, brushSize*SIZE, brushSize*SIZE);
+}
+
+function loop(){ update(); draw(); requestAnimationFrame(loop); updateStatus(); }
+loop();
+
+/* MOUSE */
+canvas.oncontextmenu=e=>e.preventDefault();
+canvas.addEventListener("mousemove", e => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = Math.floor((e.clientX - rect.left) / SIZE);
+  mouseY = Math.floor((e.clientY - rect.top) / SIZE);
+
+  const p = grid[mouseY]?.[mouseX];
+  if (p) {
+    // Update info panel
+    document.getElementById("info").innerText =
+      `Type: ${p.type}  Temp: ${p.temp.toFixed(1)}°C  Wet: ${p.wet.toFixed(2)}`;
+
+    // Show element description in box
+    document.getElementById("description").innerText =
+      elements[p.type]?.description || "No description";
+  } else {
+    document.getElementById("description").innerText = "No description";
+  }
+});
+
+canvas.addEventListener("mousedown",e=>{
+  if(e.button===0) mouseDownLeft=true;
+  if(e.button===2) mouseDownRight=true;
+});
+canvas.addEventListener("mouseup",e=>{
+  if(e.button===0) mouseDownLeft=false;
+  if(e.button===2) mouseDownRight=false;
+});
+
+function paint(x,y){ 
+  for(let dy=0; dy<brushSize; dy++){
+    for(let dx=0; dx<brushSize; dx++){
+      if(inBounds(x+dx, y+dy)){
+
+        if(replaceMode){
+          // Replace ANY element
+          grid[y+dy][x+dx] = createPixel(currentElement);
+        } else {
+          // Only place if air (no replacing)
+          if(grid[y+dy][x+dx].type === "air"){
+            grid[y+dy][x+dx] = createPixel(currentElement);
+          }
+        }
+
+      }
+    }
+  }
+}
+
+function erase(x,y){ 
+  for(let dy=0; dy<brushSize; dy++){
+    for(let dx=0; dx<brushSize; dx++){
+      if(inBounds(x+dx, y+dy)){
+        grid[y+dy][x+dx] = createPixel("air");
+      }
+    }
+  }
+}
+
+/* Continuous placement and erase */
+setInterval(()=>{
+  if(mouseDownLeft) paint(mouseX,mouseY);
+  if(mouseDownRight) erase(mouseX,mouseY);
+},30);
+
+function applyAirTemperature() {
+  const input = document.getElementById("airTempInput");
+  const val = parseFloat(input.value);
+
+  if (isNaN(val)) return;
+
+  // Update global air temperature
+  airTemperature = val;
+
+  // ONLY update air pixels
+  for (let y = 0; y < HEIGHT; y++) {
+    for (let x = 0; x < WIDTH; x++) {
+      if (grid[y][x].type === "air") {
+        grid[y][x].temp = airTemperature;
+      }
+    }
+  }
+}
+
+/* CONTROLS */
+document.getElementById("clearBtn").onclick = () => createGrid();
+document.addEventListener("keydown", e => {
+
+  // CLEAR
+  if(e.key.toLowerCase()==="c") createGrid();
+
+  // PAUSE
+  if(e.code==="Space"){
+    paused=!paused;
+    document.getElementById("pauseBtn").textContent=paused?"Resume":"Pause";
+  }
+
+  // TOGGLE REPLACE MODE (;)
+  if(e.key === ";"){
+    replaceMode = !replaceMode;
+	updateStatus();
+    document.getElementById("statusBox").innerText =
+      "Replace Mode: " + (replaceMode ? "ON" : "OFF");
+  }
+
+  if(e.key === "["){
+  brushSize = Math.max(1, brushSize - 1);
+  document.getElementById("brushSize").value = brushSize;
+  updateStatus();
+}
+
+if(e.key === "]"){
+  brushSize = Math.min(50, brushSize + 1);
+  document.getElementById("brushSize").value = brushSize;
+  updateStatus();
+}
+
+});
+document.getElementById("pauseBtn").onclick = () => { paused=!paused; document.getElementById("pauseBtn").textContent=paused?"Resume":"Pause"; };
+
+document.getElementById("applyAirTempBtn").onclick = applyAirTemperature;
+
+document.getElementById("airTempInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    applyAirTemperature();
+  }
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+    const saveBtn = document.getElementById("saveBtn");
+    const manageSavesBtn = document.getElementById("manageSavesBtn");
+    const saveManager = document.getElementById("saveManager");
+    const savesList = document.getElementById("savesList");
+    const closeSaveManager = document.getElementById("closeSaveManager");
+
+document.getElementById("publishBtn").onclick = async () => {
+  if (!currentUser || !authToken) {
+    alert("You need to be logged in to publish");
+    return;
+  }
+  const saveName = prompt("Name your public save:");
+  if (!saveName) return;
+
+  await fetch(`${SERVER_URL}/publish`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": authToken
+    },
+    body: JSON.stringify({ name: saveName, data: compressGrid(grid) })
+  });
+
+  alert("Your save has been published publicly!");
+
+  // Refresh the public saves list
+  loadAndShowPublicSaves();
+};
+
+    // --- Compress / decompress ---
+    function compressGrid(grid){
+        return grid.map(row => row.map(p=>({
+            t: typeMap[p.type],
+            temp: Math.round(p.temp),
+            wet: Math.round(p.wet*100),
+            life: Math.round(p.life)
+        })));
+    }
+
+    // --- Save current grid ---
+    const saveModal = document.getElementById("saveModal");
+const saveNameInput = document.getElementById("saveNameInput");
+const confirmSaveBtn = document.getElementById("confirmSaveBtn");
+const cancelSaveBtn = document.getElementById("cancelSaveBtn");
+
+function openSaveModal(){
+    saveModal.style.display = "flex";
+    saveNameInput.value = "";
+    saveNameInput.focus();
+}
+
+function closeSaveModal(){
+    saveModal.style.display = "none";
+}
+
+function saveCurrentGrid(name){
+    if (!name) return;
+
+
+
+        let saves = JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+        saves.push({ name, data: compressGrid(grid) });
+        try {
+            localStorage.setItem("pixelSandboxSaves", JSON.stringify(saves));
+        } catch(e) {
+            alert("Failed to save: storage quota exceeded.");
+        }
+    }
+    saveBtn.onclick = openSaveModal;
+
+    // --- Render saves ---
+    function renderSaves() {
+        savesList.innerHTML = "";
+        let saves = JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+
+        saves.forEach((save, index) => {
+            const saveDiv = document.createElement("div");
+            saveDiv.style.display = "flex";
+            saveDiv.style.alignItems = "center";
+            saveDiv.style.marginBottom = "8px";
+            saveDiv.style.background = "#333";
+            saveDiv.style.padding = "5px";
+
+            // Thumbnail
+            const thumb = generateThumbnail(decompressGrid(save.data));
+            thumb.style.cursor = "pointer";
+            thumb.onclick = () => {
+                grid = decompressGrid(save.data);
+                saveManager.style.display = "none";
+            };
+            saveDiv.appendChild(thumb);
+
+            // Name label
+            const nameLabel = document.createElement("span");
+            nameLabel.innerText = save.name;
+            nameLabel.style.color = "white";
+            nameLabel.style.marginLeft = "10px";
+            nameLabel.style.flexGrow = "1";
+            saveDiv.appendChild(nameLabel);
+
+            // Delete button
+            const delBtn = document.createElement("button");
+            delBtn.innerText = "Delete";
+            delBtn.style.background = "red";
+            delBtn.style.color = "white";
+            delBtn.style.marginLeft = "5px";
+            delBtn.onclick = async (e) => {
+  e.stopPropagation();
+  if (confirm(`Delete public save "${save.name}"?`)) {
+    try {
+      const res = await fetch(`${SERVER_URL}/delete_save/${save.id}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": authToken // include if your server requires auth
+        }
+      });
+      
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to delete");
+      }
+
+      alert("Public save deleted.");
+      loadAndShowPublicSaves(); // refresh the list after deletion
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("Failed to delete: " + err.message);
+    }
+  }
+};
+            saveDiv.appendChild(delBtn);
+
+            savesList.appendChild(saveDiv);
+        });
+
+        if (saves.length === 0) {
+            savesList.innerHTML = '<p style="color:#ccc;">No saves yet.</p>';
+        }
+    }
+
+    // --- Show / hide manager ---
+    manageSavesBtn.onclick = () => {
+        saveManager.style.display = "block";
+        renderSaves();
+    };
+    closeSaveManager.onclick = () => {
+        saveManager.style.display = "none";
+    };
+confirmSaveBtn.onclick = () => {
+    const name = saveNameInput.value.trim();
+    if (!name) return;
+
+    saveCurrentGrid(name);
+    closeSaveModal();
+};
+
+cancelSaveBtn.onclick = closeSaveModal;
+
+// Press Enter to save
+saveNameInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+        confirmSaveBtn.click();
+    }
+});
+
+// Optional: click outside to close
+saveModal.addEventListener("click", e => {
+    if (e.target === saveModal) closeSaveModal();
+});
+
+updateStatus();
+});
+</script>
+<!-- Save Modal -->
+<div id="saveModal" style="
+  display:none;
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.6);
+  z-index:20000;
+  justify-content:center;
+  align-items:center;
+">
+
+  <div style="
+    background:#222;
+    padding:20px;
+    border:2px solid #555;
+    width:300px;
+    text-align:center;
+  ">
+    <h3>Save Grid</h3>
+
+    <input id="saveNameInput" type="text" placeholder="Enter save name" style="
+      width:100%;
+      padding:6px;
+      margin-top:10px;
+      margin-bottom:10px;
+    ">
+
+    <div>
+      <button id="confirmSaveBtn">Save</button>
+<button id="publishBtn">Publish to Public</button>
+      <button id="cancelSaveBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
