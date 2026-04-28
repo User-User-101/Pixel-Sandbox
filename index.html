@@ -91,7 +91,7 @@ input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
 </style>
 </head>
 <body>
-<div id="versionLabel">v1.2.0</div>
+<div id="versionLabel">v1.3.0</div>
 
 <div id="ui">
 
@@ -290,7 +290,11 @@ document.addEventListener("DOMContentLoaded", () => {
   grassCritter:25,
   waterCritter:26,
   solidExplosive:27,
-  flammable_plastic:28
+  flammable_plastic:28,
+  acid:29,
+  autoExplosive:30,
+  autoNuke:31,
+  termite:32
 };
 
 const revTypeMap = Object.fromEntries(Object.entries(typeMap).map(([k,v])=>[v,k]));
@@ -722,6 +726,325 @@ addElement("sparks", {
 
   description: "Fast white sparks that shoot outward."
 }, "Explosives");
+
+addElement("autoNuke", {
+  color: () => "#00ffaa",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Check if on ground
+    let below = grid[y+1]?.[x];
+    let onGround = !below || (below.type !== "air" && below.type !== "water" && below.type !== "autoNuke");
+
+    // Falls
+    if (below && (below.type === "air" || below.type === "water")) {
+      swap(x, y, x, y+1);
+      grid[y+1][x].updated = true;
+      return;
+    }
+
+    // Explode on ground contact
+    if (onGround) {
+      explode(x, y);
+      return;
+    }
+
+    // Also explode if touched by fire
+    const neighbors = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      if (grid[ny][nx].type === "fire") {
+        explode(x, y);
+        return;
+      }
+    }
+
+    function explode(cx, cy) {
+      const radius = 70;
+
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          let nx = cx + dx;
+          let ny = cy + dy;
+
+          if (!inBounds(nx, ny)) continue;
+
+          let dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist > radius) continue;
+
+          if (Math.random() < 0.7) {
+            let f = createPixel("fire");
+            f.life = 60 + Math.random()*40;
+            f.temp = 1200;
+            grid[ny][nx] = f;
+          }
+
+          if (Math.random() < 0.5) {
+            let s = createPixel("sparks");
+            s.life = 4 + Math.floor(Math.random()*6);
+
+            let angle = Math.atan2(dy, dx);
+            s.vx = Math.round(Math.cos(angle) * 2);
+            s.vy = Math.round(Math.sin(angle) * 2);
+
+            grid[ny][nx] = s;
+          }
+
+          grid[ny][nx].temp = 1500;
+        }
+      }
+
+      grid[cy][cx] = createPixel("air");
+    }
+  },
+
+  description: "Nuclear bomb that detonates automatically when it hits the ground. Massive explosion!"
+}, "Explosives");
+
+addElement("termite", {
+  color: () => "#888888",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Initialize lifespan
+    if (!p.life) p.life = 300 + Math.floor(Math.random() * 200);
+
+    // Decrease lifespan
+    p.life--;
+
+    // Die when lifespan runs out
+    if (p.life <= 0) {
+      grid[y][x] = createPixel("air");
+      return;
+    }
+
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    // Look for wood to eat (slower now)
+    let ateWood = false;
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+
+      if (!inBounds(nx, ny)) continue;
+
+      if (grid[ny][nx].type === "wood") {
+        // Slower eating chance
+        if (Math.random() < 0.03) {
+          // Eat the wood
+          grid[ny][nx] = createPixel("air");
+          ateWood = true;
+
+          // Smaller life gain from eating
+          p.life = Math.min(500, p.life + 20);
+
+          // Slightly reduced duplication chance when eating
+          if (Math.random() < 0.08) {
+            // Find an empty spot nearby to spawn new termite
+            for (let d2 of neighbors) {
+              let spawnX = x + d2[0];
+              let spawnY = y + d2[1];
+
+              if (inBounds(spawnX, spawnY) && grid[spawnY][spawnX].type === "air") {
+                let newTermite = createPixel("termite");
+                newTermite.life = 200 + Math.floor(Math.random() * 100);
+                grid[spawnY][spawnX] = newTermite;
+                break;
+              }
+            }
+          }
+        }
+        break;
+      }
+    }
+
+    // Random duplication over time (even without eating)
+    if (Math.random() < 0.002) {
+      for (let d of neighbors) {
+        let spawnX = x + d[0];
+        let spawnY = y + d[1];
+
+        if (inBounds(spawnX, spawnY) && grid[spawnY][spawnX].type === "air") {
+          let newTermite = createPixel("termite");
+          newTermite.life = 150 + Math.floor(Math.random() * 100);
+          grid[spawnY][spawnX] = newTermite;
+          break;
+        }
+      }
+    }
+
+    // Movement - fall with gravity
+    let below = grid[y+1]?.[x];
+    if (below && below.type === "air") {
+      swap(x, y, x, y+1);
+      grid[y+1][x].updated = true;
+      return;
+    }
+
+    // Wander randomly
+    if (Math.random() < 0.3) {
+      let dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      let d = dirs[Math.floor(Math.random() * dirs.length)];
+      let nx = x + d[0];
+      let ny = y + d[1];
+
+      if (inBounds(nx, ny) && (grid[ny][nx].type === "air" || grid[ny][nx].type === "wood")) {
+        if (grid[ny][nx].type === "wood") {
+          // Chance to eat while moving into wood
+          if (Math.random() < 0.02) {
+            grid[ny][nx] = createPixel("air");
+            p.life = Math.min(500, p.life + 10);
+          }
+        }
+        swap(x, y, nx, ny);
+        grid[ny][nx].updated = true;
+      }
+    }
+  },
+
+  description: "Grey termites that slowly eat wood, have a lifespan, and duplicate over time."
+}, "Life");
+
+addElement("autoExplosive", {
+  color: () => "#ff6600",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Check if on ground (solid below or at bottom)
+    let below = grid[y+1]?.[x];
+    let onGround = !below || (below.type !== "air" && below.type !== "water" && below.type !== "autoExplosive");
+
+    // Falls like sand
+    if (below && (below.type === "air" || below.type === "water")) {
+      swap(x, y, x, y+1);
+      grid[y+1][x].updated = true;
+      return;
+    }
+
+    // Explode on ground contact
+    if (onGround) {
+      explode(x, y);
+      return;
+    }
+
+    // Also explode if touched by fire (like normal explosive)
+    const neighbors = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (let d of neighbors) {
+      let nx = x + d[0], ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      if (grid[ny][nx].type === "fire") {
+        explode(x, y);
+        return;
+      }
+    }
+
+    function explode(cx, cy) {
+      const radius = 18;
+
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          let nx = cx + dx;
+          let ny = cy + dy;
+
+          if (!inBounds(nx, ny)) continue;
+
+          let dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist > radius) continue;
+
+          if (Math.random() < 0.6) {
+            grid[ny][nx] = createPixel("fire");
+            grid[ny][nx].life = 30 + Math.floor(Math.random()*20);
+            grid[ny][nx].temp = 500;
+          }
+
+          if (Math.random() < 0.5) {
+            let s = createPixel("sparks");
+            s.life = 2 + Math.floor(Math.random()*3);
+            s.vx = Math.sign(dx);
+            s.vy = Math.sign(dy);
+            grid[ny][nx] = s;
+          }
+        }
+      }
+
+      grid[cy][cx] = createPixel("air");
+    }
+  },
+
+  description: "Explosive that detonates automatically when it hits the ground."
+}, "Explosives");
+
+addElement("acid", {
+  color: () => "#00ff00",
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // List of elements acid should NOT dissolve
+    const noDissolve = [
+      "air", "acid", "glass", "plastic", "stone", "iron"
+    ];
+
+    // Flow like water
+    let below = grid[y+1]?.[x];
+    if (below && below.type === "air") {
+      swap(x, y, x, y+1);
+      grid[y+1][x].updated = true;
+      return;
+    }
+
+    // Dissolve neighbors
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+
+      // Skip if in no dissolve list
+      if (noDissolve.includes(n.type)) continue;
+
+      // Dissolve with a chance
+      if (Math.random() < 0.1) {
+        grid[ny][nx] = createPixel("air");
+        
+        // Acid has a chance to be consumed when dissolving
+        if (Math.random() < 0.3) {
+          grid[y][x] = createPixel("air");
+          return;
+        }
+      }
+    }
+
+    // Spread sideways like water
+    let dir = Math.random() < 0.5 ? -1 : 1;
+    if (grid[y]?.[x+dir]?.type === "air") {
+      swap(x, y, x+dir, y);
+      grid[y][x+dir].updated = true;
+    }
+  },
+
+  description: "Corrosive acid that dissolves most materials. Green and dangerous."
+}, "Liquids");
 
 addElement("plasma", {
   color: p => `rgb(${255}, ${Math.floor(100 + Math.random()*100)}, ${255})`,
@@ -2206,7 +2529,7 @@ function update(){
   for(let y=HEIGHT-1;y>=0;y--){
     for(let x=0;x<WIDTH;x++){
       let p=grid[y][x];
-      if(["sand","soil","water","stone","lava", "grass", "coldLiquid", "ice", "smoke", "sparks", "explosive", "iron", "plastic", "glass", "plastic", "meltedplastic", "nuke", "wood", "cloud", "detCord", "oil", "plasma", "cold_fire", "waterCritter", "grassCritter", "solidExplosive", "flammable_plastic"].includes(p.type)) elements[p.type].update?.(x,y,p);
+      if(["sand","soil","water","stone","lava", "grass", "coldLiquid", "ice", "smoke", "sparks", "explosive", "iron", "plastic", "glass", "plastic", "meltedplastic", "nuke", "wood", "cloud", "detCord", "oil", "plasma", "cold_fire", "waterCritter", "grassCritter", "solidExplosive", "flammable_plastic", "acid", "autoExplosive", "autoNuke", "termite"].includes(p.type)) elements[p.type].update?.(x,y,p);
     }
   }
 
