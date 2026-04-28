@@ -2535,7 +2535,7 @@ function update(){
   for(let y=HEIGHT-1;y>=0;y--){
     for(let x=0;x<WIDTH;x++){
       let p=grid[y][x];
-      if(["sand","soil","water","stone","lava", "grass", "coldLiquid", "ice", "smoke", "sparks", "explosive", "iron", "plastic", "glass", "plastic", "meltedplastic", "nuke", "wood", "cloud", "detCord", "oil", "plasma", "cold_fire", "waterCritter", "grassCritter", "solidExplosive", "flammable_plastic", "acid", "autoExplosive", "autoNuke", "termite"].includes(p.type)) elements[p.type].update?.(x,y,p);
+      if(["sand","soil","water","stone","lava", "grass", "coldLiquid", "ice", "smoke", "sparks", "explosive", "iron", "plastic", "glass", "plastic", "meltedplastic", "nuke", "wood", "cloud", "detCord", "oil", "plasma", "cold_fire", "waterCritter", "grassCritter", "solidExplosive", "flammable_plastic", "acid", "autoExplosive", "autoNuke", "termite", "air"].includes(p.type)) elements[p.type].update?.(x,y,p);
     }
   }
 
