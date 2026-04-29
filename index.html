@@ -645,24 +645,28 @@ function renderComments(comments) {
   }
 }
 
-async function loadCommentsForCurrentSave() {
+async function loadCommentsForCurrentSave(silent = false) {
   if (!currentPublicSaveIdForComments) return;
 
   try {
-    commentsList.innerHTML = `<p style="color:#ccc;">Loading comments...</p>`;
+    if (!silent) {
+      commentsList.innerHTML = `<p style="color:#ccc;">Loading comments...</p>`;
+    }
     const res = await fetch(`${SERVER_URL}/public-comments/${currentPublicSaveIdForComments}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     renderComments(data);
   } catch (err) {
-    commentsList.innerHTML = `<p style="color:#f44;">Failed to load comments: ${err.message}</p>`;
+    if (!silent) {
+      commentsList.innerHTML = `<p style="color:#f44;">Failed to load comments: ${err.message}</p>`;
+    }
   }
 }
 
 function startCommentsPolling() {
   stopCommentsPolling();
   commentsPollTimer = setInterval(() => {
-    loadCommentsForCurrentSave();
+    loadCommentsForCurrentSave(true); // silent refresh
   }, 2000);
 }
 
@@ -678,7 +682,7 @@ function openCommentsModal(save) {
   commentsTitle.innerText = `Comments: ${save.name}`;
   commentsModal.style.display = "block";
 
-  loadCommentsForCurrentSave();
+  loadCommentsForCurrentSave(false); // initial load shows "Loading..."
   startCommentsPolling();
   setTimeout(() => commentInput.focus(), 0);
 }
