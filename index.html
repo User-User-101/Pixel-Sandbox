@@ -241,7 +241,7 @@ input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
   <button id="closeCommentsBtn">Close</button>
 </div>
 
-<div id="versionLabel">v1.3.0</div>
+<div id="versionLabel">v1.4.0</div>
 
 <div id="ui">
 
@@ -444,7 +444,8 @@ document.addEventListener("DOMContentLoaded", () => {
   acid:29,
   autoExplosive:30,
   autoNuke:31,
-  termite:32
+  termite:32,
+  liquidHydrogen:33
 };
 
 const revTypeMap = Object.fromEntries(Object.entries(typeMap).map(([k,v])=>[v,k]));
@@ -2121,6 +2122,99 @@ addElement("smoke", {
   description: "Smoke rises into the air and slowly fades away."
 }, "Explosives");
 
+addElement("liquidHydrogen", {
+  color: p => {
+    // Slight shimmer effect - very pale blue/white
+    const shimmer = Math.floor(Math.random() * 20);
+    return `rgb(${200 + shimmer}, ${230 + shimmer/2}, 255)`;
+  },
+
+  update(x, y, p) {
+    if (p.updated) return;
+    p.updated = true;
+
+    // Initialize temperature very cold
+    if (p.temp > -200) p.temp = -253;
+
+    // Evaporate quickly if warmed above -240°C
+    if (p.temp > -240) {
+      if (Math.random() < 0.3) {
+        grid[y][x] = createPixel("air");
+        return;
+      }
+    }
+
+    // EXTREMELY flammable - ignite from any heat source
+    const neighbors = [
+      [1,0],[-1,0],[0,1],[0,-1],
+      [1,1],[-1,1],[1,-1],[-1,-1]
+    ];
+
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+
+      // Ignite violently from fire, lava, sparks, plasma, or hot pixels
+      if (n.type === "fire" || n.type === "lava" || 
+          n.type === "sparks" || n.type === "plasma" || 
+          n.temp > 100) {
+        
+        // Explosive ignition - creates fire in a small radius
+        const radius = 4;
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            let fx = x + dx;
+            let fy = y + dy;
+            if (!inBounds(fx, fy)) continue;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > radius) continue;
+
+            if (Math.random() < 0.7) {
+              let f = createPixel("fire");
+              f.life = 40 + Math.random() * 30;
+              f.temp = 800;
+              grid[fy][fx] = f;
+            }
+          }
+        }
+        return;
+      }
+    }
+
+    // Freeze nearby pixels intensely
+    for (let d of neighbors) {
+      let nx = x + d[0];
+      let ny = y + d[1];
+      if (!inBounds(nx, ny)) continue;
+
+      let n = grid[ny][nx];
+
+      // Freeze water instantly
+      if (n.type === "water") {
+        grid[ny][nx] = createPixel("ice");
+        grid[ny][nx].temp = -100;
+      }
+
+      // Cool everything dramatically
+      n.temp -= 30;
+    }
+
+    // === SAME LIQUID LOGIC AS WATER ===
+    let below = grid[y+1]?.[x];
+    if (below?.type === "air") {
+      swap(x, y, x, y+1);
+    } else {
+      let dir = Math.random() < 0.5 ? -1 : 1;
+      if (grid[y]?.[x+dir]?.type === "air") swap(x, y, x+dir, y);
+    }
+  },
+
+  description: "Liquid Hydrogen at -253°C. Freezes everything it touches, evaporates quickly when warm, and is EXTREMELY flammable - ignites explosively from any heat source!"
+}, "Liquids");
+
 addElement("stone",{ color:p=>p.temp>400?"orange":p.temp>250?"red":"gray" }, "Solids");
 
 addElement("lava",{ 
@@ -2828,7 +2922,7 @@ function update(){
   for(let y=HEIGHT-1;y>=0;y--){
     for(let x=0;x<WIDTH;x++){
       let p=grid[y][x];
-      if(["sand","soil","water","stone","lava", "grass", "coldLiquid", "ice", "smoke", "sparks", "explosive", "iron", "plastic", "glass", "plastic", "meltedplastic", "nuke", "wood", "cloud", "detCord", "oil", "plasma", "cold_fire", "waterCritter", "grassCritter", "solidExplosive", "flammable_plastic", "acid", "autoExplosive", "autoNuke", "termite", "air"].includes(p.type)) elements[p.type].update?.(x,y,p);
+      if(["sand","soil","water","stone","lava", "grass", "coldLiquid", "ice", "smoke", "sparks", "explosive", "iron", "plastic", "glass", "plastic", "meltedplastic", "nuke", "wood", "cloud", "detCord", "oil", "plasma", "cold_fire", "waterCritter", "grassCritter", "solidExplosive", "flammable_plastic", "acid", "autoExplosive", "autoNuke", "termite", "air", "liquidHydrogen"].includes(p.type)) elements[p.type].update?.(x,y,p);
     }
   }
 
