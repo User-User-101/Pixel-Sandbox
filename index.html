@@ -4,6 +4,22 @@
 <meta charset="UTF-8">
 <title>Pixel Sandbox</title>
 <style>
+#close-error-btn {
+  float: right;
+  padding: 10px 20px;
+  background: #fff;
+  color: #c80000;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  font-family: sans-serif;
+  border-radius: 4px;
+}
+
+#close-error-btn:hover {
+  background: #eee;
+}
+
   #error-overlay {
     position: fixed;
     top: 0;
@@ -194,6 +210,9 @@ input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
 <body>
 
 <div id="error-overlay">
+  <!-- Add this line -->
+  <button id="close-error-btn">Close Error & Continue</button> 
+  
   <h1>Error</h1>
   <div id="error-message"></div>
   <pre id="error-stack"></pre>
@@ -203,12 +222,17 @@ input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
   const overlay = document.getElementById('error-overlay');
   const messageEl = document.getElementById('error-message');
   const stackEl = document.getElementById('error-stack');
+const closeErrorBtn = document.getElementById('close-error-btn');
 
   function showError(message, stack) {
     messageEl.textContent = message || 'Unknown error';
     stackEl.textContent = stack || '';
     overlay.style.display = 'block';
   }
+
+closeErrorBtn.onclick = function() {
+  overlay.style.display = 'none';
+};
 
   // Catch general JS errors
   window.onerror = function(message, source, lineno, colno, error) {
