@@ -3037,6 +3037,7 @@ canvas.addEventListener("mousemove", e => {
   const sy = rect.height ? canvas.height / rect.height : 1;
   mouseX = Math.floor((e.clientX - rect.left) * sx / SIZE);
   mouseY = Math.floor((e.clientY - rect.top)  * sy / SIZE);
+  if (mouseDownLeft || mouseDownRight) { moveTrail.push([mouseX, mouseY]); if (moveTrail.length > 64) moveTrail.shift(); }
   mp.cursor(mouseX, mouseY);
 
   const p = grid[mouseY]?.[mouseX];
@@ -3083,9 +3084,77 @@ function paintAt(x,y,el,size,rep){
   return changed;
 }
 
-function paint(x,y){
-  if(paintAt(x,y,currentElement,brushSize,replaceMode))
-    mp.send({t:"paint", x, y, el:currentElement, size:brushSize, rep:replaceMode});
+// ----- strokes: connect the mouse positions so fast drawing leaves a solid line -----
+// Cells along a Bresenham line, both ends included. Big brushes are thinned
+// (every size/2 cells) so neighbouring stamps still overlap.
+function lineStamps(x0,y0,x1,y1,size){
+  if(![x0,y0,x1,y1].every(Number.isFinite)) return [[x1|0,y1|0]];
+  const step = Math.max(1, Math.floor(size/2));
+  const pts = [];
+  const dx = Math.abs(x1-x0), dy = Math.abs(y1-y0);
+  const sx = x0<x1 ? 1 : -1, sy = y0<y1 ? 1 : -1;
+  let err = dx-dy, x = x0, y = y0, i = 0;
+  for(;;){
+    if(i%step===0) pts.push([x,y]);
+    if(x===x1 && y===y1){ if(i%step!==0) pts.push([x,y]); break; }
+    const e2 = 2*err;
+    if(e2 > -dy){ err -= dy; x += sx; }
+    if(e2 <  dx){ err += dx; y += sy; }
+    i++;
+  }
+  return pts;
+}
+
+function paintLine(x0,y0,x1,y1,el,size,rep){
+  let changed = false;
+  for(const [x,y] of lineStamps(x0,y0,x1,y1,size)) if(paintAt(x,y,el,size,rep)) changed = true;
+  return changed;
+}
+function eraseLine(x0,y0,x1,y1,size){
+  let changed = false;
+  for(const [x,y] of lineStamps(x0,y0,x1,y1,size)) if(eraseAt(x,y,size)) changed = true;
+  return changed;
+}
+
+// Send a stroke to the room in pieces that keep the work per message bounded
+// (the server enforces the same limit).
+function sendStroke(kind, pts, size, extra){
+  if(!mp.active) return;
+  const maxStamps = Math.max(1, Math.floor(40000/(size*size)));
+  for(let i=0; i<pts.length; i+=maxStamps){
+    const a = pts[i], b = pts[Math.min(i+maxStamps-1, pts.length-1)];
+    const m = Object.assign({t:kind, x:a[0], y:a[1], size}, extra);
+    if(a[0]!==b[0] || a[1]!==b[1]){ m.x2 = b[0]; m.y2 = b[1]; }
+    mp.send(m);
+  }
+}
+
+function strokePaint(x0,y0,x1,y1){
+  const size=brushSize, el=currentElement, rep=replaceMode;
+  const pts = lineStamps(x0,y0,x1,y1,size);
+  let changed = false;
+  for(const [x,y] of pts) if(paintAt(x,y,el,size,rep)) changed = true;
+  if(changed) sendStroke("paint", pts, size, {el, rep});
+}
+function strokeErase(x0,y0,x1,y1){
+  const size=brushSize;
+  const pts = lineStamps(x0,y0,x1,y1,size);
+  let changed = false;
+  for(const [x,y] of pts) if(eraseAt(x,y,size)) changed = true;
+  if(changed) sendStroke("erase", pts, size, {});
+}
+function paint(x,y){ strokePaint(x,y,x,y); }
+function erase(x,y){ strokeErase(x,y,x,y); }
+
+// Every mouse position since the last tick, so quick curves stay smooth.
+const moveTrail = [];
+const strokeLast = { left:null, right:null };
+function runStroke(down, key, fn){
+  if(!down){ strokeLast[key] = null; return; }
+  let prev = strokeLast[key] || [mouseX, mouseY];
+  const samples = moveTrail.length ? moveTrail : [[mouseX, mouseY]];
+  for(const [x,y] of samples){ fn(prev[0], prev[1], x, y); prev = [x,y]; }
+  strokeLast[key] = prev;
 }
 
 function eraseAt(x,y,size){
@@ -3101,9 +3170,6 @@ function eraseAt(x,y,size){
   return changed;
 }
 
-function erase(x,y){
-  if(eraseAt(x,y,brushSize)) mp.send({t:"erase", x, y, size:brushSize});
-}
 
 // Clear / pause go through these so they are shared with the room.
 function userClear(){ createGrid(); mp.send({t:"clear"}); }
@@ -3144,8 +3210,9 @@ window.addEventListener("mouseup", e => {
 
 /* Continuous placement and erase */
 setInterval(()=>{
-  if(mouseDownLeft) paint(mouseX,mouseY);
-  if(mouseDownRight) erase(mouseX,mouseY);
+  runStroke(mouseDownLeft,  "left",  strokePaint);
+  runStroke(mouseDownRight, "right", strokeErase);
+  moveTrail.length = 0;
 },30);
 
 function applyAirTemperature() {
@@ -3718,7 +3785,9 @@ updateStatus();
     S.me = null;
     resetSession();
 
-    if (S.intentional) {
+    if (S.banned) {
+      S.banned = false;           // the "banned" message already explained it
+    } else if (S.intentional) {
       addLine("system", "Disconnected. The world on your screen is yours again.");
     } else if (hadSession && S.want && S.retries < 5) {
       const delay = 1000 * 2 ** S.retries++;
@@ -3796,6 +3865,13 @@ updateStatus();
         return;
       }
 
+      case "banned":
+        S.banned = true;
+        S.want = null;
+        S.pending = null;
+        openChat();
+        return addLine("error", m.text);
+
       case "sys":
         return addLine(m.level === "error" ? "error" : "system", m.text);
 
@@ -3837,8 +3913,14 @@ updateStatus();
 
   function applyAction(m) {
     switch (m.t) {
-      case "paint": paintAt(m.x, m.y, m.el, m.size, m.rep); break;
-      case "erase": eraseAt(m.x, m.y, m.size); break;
+      case "paint":
+        if (m.x2 !== undefined) paintLine(m.x, m.y, m.x2, m.y2, m.el, m.size, m.rep);
+        else paintAt(m.x, m.y, m.el, m.size, m.rep);
+        break;
+      case "erase":
+        if (m.x2 !== undefined) eraseLine(m.x, m.y, m.x2, m.y2, m.size);
+        else eraseAt(m.x, m.y, m.size);
+        break;
       case "clear": createGrid(); break;
       case "air": {
         airTemperature = m.temp;
@@ -4059,6 +4141,263 @@ updateStatus();
   window.addEventListener("beforeunload", () => { try { if (S.ws) S.ws.close(); } catch (e) {} });
 
   addLine("system", "Multiplayer: type :connect to join the public lobby, or :room <code> for a private room. :help lists everything.");
+})();
+</script>
+<script>
+/* ================= ADMIN MENU (Ctrl+A) =================
+   Anyone can open this window, but nothing in it works without the secret
+   code, which only exists as the ADMIN_CODE variable on the server. The code is
+   never stored in this page; the session token lives in memory only. */
+(() => {
+  "use strict";
+
+  const API = SERVER_URL.replace(/\/+$/, "");
+  let token = null;
+  let pollTimer = null;
+  let root = null;
+
+  // ---------- banned screen ----------
+  function showBanned(reason) {
+    if (document.getElementById("bannedScreen")) return;
+    // Swallow all keyboard shortcuts while banned.
+    window.addEventListener("keydown", (e) => e.stopImmediatePropagation(), true);
+    try { setPaused(true, true); } catch (e) {}
+    const d = document.createElement("div");
+    d.id = "bannedScreen";
+    d.style.cssText = "position:fixed;inset:0;z-index:100000;background:#111;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Arial,sans-serif;text-align:center;padding:20px";
+    const h = document.createElement("h1");
+    h.textContent = "You are banned from Pixel Sandbox";
+    const p = document.createElement("p");
+    p.style.color = "#bbb";
+    p.textContent = reason ? "Reason: " + reason : "If you think this is a mistake, contact the site owner.";
+    d.append(h, p);
+    document.body.appendChild(d);
+  }
+  fetch(API + "/ban-status")
+    .then((r) => r.json())
+    .then((s) => { if (s && s.banned) showBanned(s.reason); })
+    .catch(() => {}); // server asleep/unreachable: nothing to enforce client-side
+  window.__showBanned = showBanned;
+
+  // ---------- tiny DOM helpers (all text via textContent: player names are untrusted) ----------
+  function el(tag, props = {}, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === "style") n.style.cssText = v;
+      else if (k === "class") n.className = v;
+      else if (k.startsWith("on")) n[k] = v;
+      else n[k] = v;
+    }
+    n.append(...kids.filter((k) => k !== null && k !== undefined));
+    return n;
+  }
+
+  const css = `
+  #admRoot{position:fixed;inset:0;z-index:40000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font:14px Arial,sans-serif;color:#eee}
+  #admBox{background:#262626;border:1px solid #666;border-radius:8px;width:min(760px,94vw);max-height:90vh;overflow:auto;padding:14px 16px;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+  #admBox h2{margin:0 0 8px;font-size:18px} #admBox h3{margin:14px 0 6px;font-size:14px;color:#cfd8e3}
+  #admBox input,#admBox select{background:#111;color:#fff;border:1px solid #555;border-radius:4px;padding:5px 7px;font:inherit}
+  #admBox button{background:#3a3a3a;color:#fff;border:1px solid #666;border-radius:4px;padding:4px 9px;cursor:pointer;font:inherit}
+  #admBox button:hover{background:#4a4a4a} #admBox button.danger{background:#7a2323;border-color:#a33}
+  #admBox button.danger:hover{background:#963030}
+  #admBox table{width:100%;border-collapse:collapse} #admBox th,#admBox td{padding:4px 6px;border-bottom:1px solid #3a3a3a;text-align:left;vertical-align:middle}
+  #admBox th{color:#9aa;font-weight:normal;font-size:12px}
+  .admRow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0}
+  .admMsg{margin-top:8px;min-height:18px} .admMsg.err{color:#ff8a8a} .admMsg.ok{color:#8ae68a}
+  .admNote{color:#9aa;font-size:12px;margin:4px 0}
+  `;
+
+  function msg(text, kind) {
+    const m = root && root.querySelector(".admMsg");
+    if (!m) return;
+    m.textContent = text || "";
+    m.className = "admMsg" + (kind ? " " + kind : "");
+  }
+
+  // ---------- API ----------
+  async function api(path, body) {
+    const res = await fetch(API + path, {
+      method: body !== undefined ? "POST" : "GET",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (res.status === 403 && data && data.banned) showBanned(data.reason);
+    if (res.status === 401 && token) { token = null; render(); }
+    if (!res.ok) throw new Error((data && data.error) || `Server error (${res.status})`);
+    return data;
+  }
+
+  // ---------- views ----------
+  function close() {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    if (root) root.remove();
+    root = null;
+  }
+
+  function open() {
+    if (root) return;
+    if (!document.getElementById("admStyle")) document.head.appendChild(el("style", { id: "admStyle", textContent: css }));
+    root = el("div", { id: "admRoot", onmousedown: (e) => { if (e.target === root) close(); } });
+    document.body.appendChild(root);
+    render();
+  }
+
+  function render() {
+    if (!root) return;
+    clearInterval(pollTimer);
+    pollTimer = null;
+    root.replaceChildren();
+    const box = el("div", { id: "admBox" });
+    root.appendChild(box);
+    token ? renderPanel(box) : renderLogin(box);
+  }
+
+  function renderLogin(box) {
+    const input = el("input", { type: "password", placeholder: "Admin code", autocomplete: "off", style: "width:220px" });
+    const go = async () => {
+      const code = input.value;
+      input.value = "";
+      if (!code) return;
+      msg("Checking…");
+      try {
+        const r = await api("/admin/login", { code });
+        token = r.token;
+        render();
+      } catch (e) {
+        msg(e.message, "err");
+      }
+    };
+    input.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") go(); if (e.key === "Escape") close(); };
+    box.append(
+      el("h2", {}, "Admin"),
+      el("div", { class: "admRow" }, input, el("button", { onclick: go }, "Unlock"), el("button", { onclick: close }, "Cancel")),
+      el("div", { class: "admMsg" })
+    );
+    setTimeout(() => input.focus(), 0);
+  }
+
+  function renderPanel(box) {
+    const duration = el("select", {},
+      ...[["Permanent", 0], ["1 hour", 60], ["24 hours", 1440], ["7 days", 10080], ["30 days", 43200]].map(([t, v]) => el("option", { value: v, textContent: t })));
+    const reason = el("input", { type: "text", maxLength: 200, placeholder: "Reason (optional, shown to them)", style: "flex:1;min-width:180px" });
+    const manualIp = el("input", { type: "text", placeholder: "IP address", style: "width:200px" });
+    const manualScope = el("select", {}, el("option", { value: "multiplayer", textContent: "Multiplayer only" }), el("option", { value: "game", textContent: "Whole game" }));
+    const myIpEl = el("div", { class: "admNote" });
+    const playersEl = el("div");
+    const bansEl = el("div");
+
+    async function ban(ip, scope, label) {
+      const dur = duration.options[duration.selectedIndex].textContent.toLowerCase();
+      const what = scope === "game" ? "the whole game (multiplayer, saves, login)" : "multiplayer";
+      if (!confirm(`Ban ${label ? label + " — " : ""}${ip} from ${what} (${dur})?\n\nEveryone sharing this IP address will be affected.`)) return;
+      try {
+        const r = await api("/admin/ban", { ip, scope, minutes: Number(duration.value), reason: reason.value });
+        msg(`Banned ${ip}. Disconnected ${r.disconnected} connection(s).`, "ok");
+        refresh();
+      } catch (e) {
+        msg(e.message, "err");
+      }
+    }
+
+    async function unban(ip) {
+      try {
+        await api("/admin/unban", { ip });
+        msg(`Unbanned ${ip}.`, "ok");
+        refresh();
+      } catch (e) {
+        msg(e.message, "err");
+      }
+    }
+
+    function table(headers, rows, empty) {
+      if (!rows.length) return el("div", { class: "admNote" }, empty);
+      return el("table", {},
+        el("thead", {}, el("tr", {}, ...headers.map((h) => el("th", {}, h)))),
+        el("tbody", {}, ...rows));
+    }
+
+    async function refresh() {
+      if (!root || !token) return;
+      let s;
+      try {
+        s = await api("/admin/state");
+      } catch (e) {
+        if (token) msg(e.message, "err");
+        return;
+      }
+      if (!root || !token) return;
+
+      myIpEl.textContent = `Your IP as the server sees it: ${s.myIp || "unknown"}  (proxy hops: ${s.proxyHops}). ` +
+        "If this isn't your real public IP, the server is seeing a proxy address; fix TRUSTED_PROXY_HOPS before banning anyone.";
+
+      const bannedIps = new Set(s.bans.map((b) => b.ip));
+      playersEl.replaceChildren(table(
+        ["Name", "Where", "IP", ""],
+        s.players.map((p) =>
+          el("tr", {},
+            el("td", {}, p.name + (p.authed ? " ✓" : "")),
+            el("td", {}, p.room || "—"),
+            el("td", {}, p.ip || "?"),
+            el("td", { style: "white-space:nowrap;text-align:right" },
+              !p.ip ? "" : bannedIps.has(p.ip) ? el("span", { class: "admNote" }, "banned") : el("span", {},
+                el("button", { class: "danger", onclick: () => ban(p.ip, "multiplayer", p.name) }, "Ban multiplayer"),
+                " ",
+                el("button", { class: "danger", onclick: () => ban(p.ip, "game", p.name) }, "Ban game"))))),
+        "Nobody is connected to multiplayer right now."));
+
+      bansEl.replaceChildren(table(
+        ["IP", "Scope", "Until", "Reason", ""],
+        s.bans.map((b) =>
+          el("tr", {},
+            el("td", {}, b.ip),
+            el("td", {}, b.scope === "game" ? "Whole game" : "Multiplayer"),
+            el("td", {}, b.expires ? new Date(b.expires).toLocaleString() : "Permanent"),
+            el("td", {}, b.reason || ""),
+            el("td", { style: "text-align:right" }, el("button", { onclick: () => unban(b.ip) }, "Unban")))),
+        "No active bans."));
+    }
+
+    box.append(
+      el("div", { class: "admRow", style: "justify-content:space-between" },
+        el("h2", { style: "margin:0" }, "Admin"),
+        el("div", {},
+          el("button", { onclick: refresh }, "Refresh"), " ",
+          el("button", { onclick: async () => { try { await api("/admin/logout", {}); } catch (e) {} token = null; render(); } }, "Lock"), " ",
+          el("button", { onclick: close }, "Close"))),
+      myIpEl,
+      el("h3", {}, "Ban settings"),
+      el("div", { class: "admRow" }, "Duration:", duration, reason),
+      el("h3", {}, "Connected players"),
+      playersEl,
+      el("h3", {}, "Ban an IP manually"),
+      el("div", { class: "admRow" }, manualIp, manualScope,
+        el("button", { class: "danger", onclick: () => manualIp.value.trim() ? ban(manualIp.value.trim(), manualScope.value) : msg("Enter an IP address.", "err") }, "Ban")),
+      el("h3", {}, "Active bans"),
+      bansEl,
+      el("div", { class: "admMsg" }),
+      el("div", { class: "admNote" }, "IP bans are a blunt tool: people can change IP (VPN, mobile data), and everyone behind a shared IP (school, household) is affected too.")
+    );
+    for (const i of box.querySelectorAll("input")) i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") close(); };
+
+    refresh();
+    pollTimer = setInterval(refresh, 4000);
+  }
+
+  // ---------- Ctrl+A ----------
+  const isTextTarget = (t) =>
+    t && (t.tagName === "TEXTAREA" || t.isContentEditable || (t.tagName === "INPUT" && !["range", "button", "checkbox"].includes(t.type)));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && root) { close(); return; }
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "a") {
+      if (isTextTarget(e.target)) return; // keep normal "select all" inside text boxes
+      e.preventDefault();
+      root ? close() : open();
+    }
+  });
 })();
 </script>
 <!-- Save Modal -->
