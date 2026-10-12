@@ -668,6 +668,7 @@ document.getElementById("publicSavesModal").style.display = "none";
 
 let currentUser = null;
 let authToken = null;
+let isOwnerAccount = false; // set by the server at login; the server re-checks everything
 
 let currentPublicSaveIdForComments = null;
 let commentsPollTimer = null;
@@ -800,7 +801,7 @@ function updateAuthUI() {
   document.getElementById("loginBtn").style.display = currentUser ? "none" : "inline-block";
   document.getElementById("registerBtn").style.display = currentUser ? "none" : "inline-block";
   document.getElementById("logoutBtn").style.display = currentUser ? "inline-block" : "none";
-  document.getElementById("userStatus").innerText = currentUser ? `Logged in as ${currentUser}` : "Not logged in";
+  document.getElementById("userStatus").innerText = currentUser ? `Logged in as ${currentUser}${isOwnerAccount ? " (admin: Ctrl+A)" : ""}` : "Not logged in";
 }
 
 // Login
@@ -815,37 +816,50 @@ document.getElementById("loginBtn").onclick = () => {
     .then(data => {
       if (data.token) {
         authToken = data.token;
-        currentUser = username;
+        currentUser = data.username || username;
+        isOwnerAccount = !!data.owner;
         updateAuthUI();
         loadSaves(); // load user saves
       } else {
-        alert("Login failed");
+        alert(data.error || "Login failed");
       }
     });
 }
 
 // Register
-document.getElementById("registerBtn").onclick = () => {
+document.getElementById("registerBtn").onclick = async () => {
   const username = prompt("Choose username:");
+  if (username === null) return;
   const password = prompt("Choose password:");
-  fetch(`${SERVER_URL}/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  }).then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        alert("Registered! You can now login.");
-      } else {
-        alert("Registration failed");
-      }
+  if (password === null) return;
+  const attempt = async (claim) => {
+    const res = await fetch(`${SERVER_URL}/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, claim })
     });
+    return res.json().catch(() => ({}));
+  };
+  try {
+    let data = await attempt();
+    if (data.needsClaim) {
+      // Only asked for when registering the Owner account for the first time.
+      const claim = prompt((data.error || "") + "\n\nEnter the one-time claim code from your server logs:");
+      if (claim === null) return;
+      data = await attempt(claim);
+    }
+    alert(data.success ? "Registered! You can now login." : (data.error || "Registration failed"));
+  } catch (e) {
+    alert("Registration failed: could not reach the server.");
+  }
 }
 
 // Logout
 document.getElementById("logoutBtn").onclick = () => {
+  if (authToken) fetch(`${SERVER_URL}/logout`, { method: "POST", headers: { "Authorization": authToken } }).catch(() => {});
   currentUser = null;
   authToken = null;
+  isOwnerAccount = false;
   updateAuthUI();
   // Clear local saves or show only local
 }
@@ -3550,7 +3564,7 @@ updateStatus();
         const n = document.createElement("span");
         n.className = "mpName";
         n.style.color = colorFor(from);
-        n.textContent = (opts.owner ? "★ " : "") + from + ": ";
+        n.textContent = (opts.admin ? "[Owner] " : "") + (opts.owner ? "★ " : "") + from + ": ";
         line.appendChild(n);
       }
       const t = document.createElement("span");
@@ -3876,7 +3890,7 @@ updateStatus();
         return addLine(m.level === "error" ? "error" : "system", m.text);
 
       case "chat":
-        return addLine("chat", m.text, m.from, { owner: m.owner, mine: S.me && m.id === S.me.id });
+        return addLine("chat", m.text, m.from, { owner: m.owner, admin: m.admin, mine: S.me && m.id === S.me.id });
 
       case "kicked":
         S.want = null;
@@ -4145,14 +4159,13 @@ updateStatus();
 </script>
 <script>
 /* ================= ADMIN MENU (Ctrl+A) =================
-   Anyone can open this window, but nothing in it works without the secret
-   code, which only exists as the ADMIN_CODE variable on the server. The code is
-   never stored in this page; the session token lives in memory only. */
+   Admin access = being logged in as the "Owner" account. This window uses the
+   normal game login (authToken); the server decides whether that token really
+   belongs to the Owner, so opening this window as anyone else does nothing. */
 (() => {
   "use strict";
 
   const API = SERVER_URL.replace(/\/+$/, "");
-  let token = null;
   let pollTimer = null;
   let root = null;
 
@@ -4218,16 +4231,21 @@ updateStatus();
   async function api(path, body) {
     const res = await fetch(API + path, {
       method: body !== undefined ? "POST" : "GET",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+      headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: authToken } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     let data = null;
     try { data = await res.json(); } catch (e) {}
     if (res.status === 403 && data && data.banned) showBanned(data.reason);
-    if (res.status === 401 && token) { token = null; render(); }
-    if (!res.ok) throw new Error((data && data.error) || `Server error (${res.status})`);
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `Server error (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
     return data;
   }
+
+  const hasAccess = () => !!(authToken && isOwnerAccount);
 
   // ---------- views ----------
   function close() {
@@ -4252,31 +4270,21 @@ updateStatus();
     root.replaceChildren();
     const box = el("div", { id: "admBox" });
     root.appendChild(box);
-    token ? renderPanel(box) : renderLogin(box);
+    hasAccess() ? renderPanel(box) : renderGate(box);
   }
 
-  function renderLogin(box) {
-    const input = el("input", { type: "password", placeholder: "Admin code", autocomplete: "off", style: "width:220px" });
-    const go = async () => {
-      const code = input.value;
-      input.value = "";
-      if (!code) return;
-      msg("Checking…");
-      try {
-        const r = await api("/admin/login", { code });
-        token = r.token;
-        render();
-      } catch (e) {
-        msg(e.message, "err");
-      }
-    };
-    input.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") go(); if (e.key === "Escape") close(); };
+  // Shown to anyone who is not logged in as the Owner.
+  function renderGate(box) {
+    const loggedIn = !!authToken;
     box.append(
       el("h2", {}, "Admin"),
-      el("div", { class: "admRow" }, input, el("button", { onclick: go }, "Unlock"), el("button", { onclick: close }, "Cancel")),
-      el("div", { class: "admMsg" })
+      el("div", {}, loggedIn
+        ? `You're logged in as ${currentUser}. Only the Owner account can use the admin tools.`
+        : "Admin tools are for the Owner account. Log in as Owner to use them."),
+      el("div", { class: "admRow", style: "margin-top:10px" },
+        loggedIn ? null : el("button", { onclick: () => { close(); document.getElementById("loginBtn").click(); } }, "Log in"),
+        el("button", { onclick: close }, "Close"))
     );
-    setTimeout(() => input.focus(), 0);
   }
 
   function renderPanel(box) {
@@ -4320,15 +4328,17 @@ updateStatus();
     }
 
     async function refresh() {
-      if (!root || !token) return;
+      if (!root || !hasAccess()) return;
       let s;
       try {
         s = await api("/admin/state");
       } catch (e) {
-        if (token) msg(e.message, "err");
+        msg(e.status === 401 || e.status === 403
+          ? "Your admin login expired. Log out, then log in as Owner again."
+          : e.message, "err");
         return;
       }
-      if (!root || !token) return;
+      if (!root || !hasAccess()) return;
 
       myIpEl.textContent = `Your IP as the server sees it: ${s.myIp || "unknown"}  (proxy hops: ${s.proxyHops}). ` +
         "If this isn't your real public IP, the server is seeing a proxy address; fix TRUSTED_PROXY_HOPS before banning anyone.";
@@ -4365,7 +4375,6 @@ updateStatus();
         el("h2", { style: "margin:0" }, "Admin"),
         el("div", {},
           el("button", { onclick: refresh }, "Refresh"), " ",
-          el("button", { onclick: async () => { try { await api("/admin/logout", {}); } catch (e) {} token = null; render(); } }, "Lock"), " ",
           el("button", { onclick: close }, "Close"))),
       myIpEl,
       el("h3", {}, "Ban settings"),
