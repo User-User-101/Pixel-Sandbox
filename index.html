@@ -201,9 +201,9 @@
 
 * { margin:0; padding:0; box-sizing:border-box; }
 body { display:flex; height:100vh; overflow:hidden; font-family:Arial; background:#222; color:white; }
-#ui { width:250px; background:#333; padding:10px; overflow-y:auto; border-right:4px solid black; }
+#ui { width:250px; min-width:250px; flex:0 0 250px; background:#333; padding:10px; overflow-y:auto; border-right:4px solid black; }
 #elements button { width:100%; margin-bottom:4px; padding:5px; cursor:pointer; }
-canvas { flex:1; background:#111; display:block; cursor:none; }
+canvas { flex:1 1 auto; min-width:0; background:#111; display:block; cursor:none; }
 input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
 
 /* ---------- Multiplayer chat ---------- */
@@ -221,7 +221,7 @@ input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
 #mpTitle{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #mpToggle{ background:none; border:none; color:#ccc; cursor:pointer; font-size:15px; line-height:1; padding:0 4px; }
 #mpLog{ height:170px; overflow-y:auto; padding:6px 8px; word-break:break-word; }
-#mpChat.collapsed #mpLog, #mpChat.collapsed #mpInput{ display:none; }
+#mpChat.collapsed #mpLog, #mpChat.collapsed #mpInput, #mpChat.collapsed #mpDisclosure{ display:none; }
 #mpChat.collapsed #mpHeader{ border-radius:6px; }
 #mpInput{
   display:block; width:100%; border:none; border-top:1px solid #444; background:rgba(0,0,0,.5);
@@ -231,6 +231,22 @@ input[type=number] { width: 100%; margin-bottom:5px; padding:3px; }
 .mpLine.error{ color:#ff8a8a; }
 .mpLine .mpName{ font-weight:bold; }
 .mpLine.mine .mpText{ color:#fff; }
+#mpDisclosure{padding:4px 8px;border-top:1px solid #444;color:#aaa;font-size:10px;line-height:1.35}
+#ownerMessageModal{display:none;position:fixed;inset:0;z-index:30001;background:rgba(0,0,0,.72);align-items:center;justify-content:center;padding:14px}
+#ownerMessageBox{width:min(440px,96vw);background:#222;border:2px solid #555;padding:16px}
+#ownerMessageBox h3{margin-bottom:8px}
+#ownerMessageBox p{color:#bbb;font-size:12px;line-height:1.4;margin:7px 0}
+#ownerMessageBox input,#ownerMessageBox textarea{display:block;width:100%;margin:7px 0;padding:8px;background:#111;color:#fff;border:1px solid #666;font:inherit}
+#ownerMessageBox textarea{min-height:120px;resize:vertical}
+#ownerMessageStatus{min-height:18px;font-size:12px;color:#9fd7c5}
+@media (max-width: 640px){
+  body{flex-direction:column}
+  #ui{width:100%;min-width:0;height:34vh;max-height:300px;flex:0 0 auto;overflow-y:auto;border-right:0;border-bottom:3px solid black;padding:6px}
+  canvas{min-width:0;min-height:0}
+  #mpChat{left:auto;right:8px;bottom:8px;width:min(360px,calc(100vw - 16px));max-width:none}
+  #publicSavesModal,#saveManager{left:8px!important;top:8px!important;width:calc(100vw - 16px)!important;height:80vh!important}
+  #commentsModal{left:8px!important;top:8px!important;width:calc(100vw - 16px)!important}
+}
 </style>
 </head>
 <body>
@@ -291,6 +307,20 @@ closeErrorBtn.onclick = function() {
   <button id="closeCommentsBtn">Close</button>
 </div>
 
+<div id="ownerMessageModal" role="dialog" aria-modal="true" aria-labelledby="ownerMessageTitle">
+  <div id="ownerMessageBox">
+    <h3 id="ownerMessageTitle">Message the owner</h3>
+    <p>Messages are stored for moderation. Your IP address is included in the private owner/admin inbox.</p>
+    <input id="ownerMessageSender" type="text" maxlength="80" placeholder="Your name (optional)">
+    <textarea id="ownerMessageText" maxlength="2000" placeholder="What would you like the owner to know?"></textarea>
+    <div class="admRow">
+      <button id="sendOwnerMessageBtn" type="button">Send message</button>
+      <button id="cancelOwnerMessageBtn" type="button">Cancel</button>
+    </div>
+    <div id="ownerMessageStatus" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
 <div id="versionLabel">v1.5.0</div>
 
 <div id="ui">
@@ -305,6 +335,7 @@ closeErrorBtn.onclick = function() {
 
 <button id="browsePublicBtn">Browse Public Saves</button>
 <button id="mpOpenBtn" style="font-weight:bold;">Multiplayer Chat</button>
+<button id="contactOwnerBtn">Message the owner</button>
 
 <div id="publicSavesModal" style="
   display:none;
@@ -408,13 +439,14 @@ closeErrorBtn.onclick = function() {
 <div id="mpChat" class="collapsed">
   <div id="mpHeader"><span id="mpTitle">Multiplayer: offline</span><button id="mpToggle" title="Show / hide chat">+</button></div>
   <div id="mpLog"></div>
+  <div id="mpDisclosure">Chat is filtered and retained with sender IP for 30 days; admins can review it.</div>
   <input id="mpInput" type="text" maxlength="300" autocomplete="off" spellcheck="false" placeholder="Enter to chat · :connect · :room code · :help">
 </div>
 
 <script>
 
 // Add ?server=http://localhost:3000 to the page URL to test against a local backend.
-const SERVER_URL = new URLSearchParams(location.search).get("server") || "https://backend-c7h6.onrender.com";
+const SERVER_URL = (new URLSearchParams(location.search).get("server") || "/api").replace(/\/+$/, "");
 
 // Multiplayer hooks. The real implementations are installed by the multiplayer
 // script at the bottom of this file; these no-ops keep the game working offline.
@@ -668,7 +700,52 @@ document.getElementById("publicSavesModal").style.display = "none";
 
 let currentUser = null;
 let authToken = null;
-let isOwnerAccount = false; // set by the server at login; the server re-checks everything
+let isOwnerAccount = false;
+let isAdminAccount = false;
+
+const ownerMessageModal = document.getElementById("ownerMessageModal");
+const ownerMessageSender = document.getElementById("ownerMessageSender");
+const ownerMessageText = document.getElementById("ownerMessageText");
+const ownerMessageStatus = document.getElementById("ownerMessageStatus");
+const sendOwnerMessageBtn = document.getElementById("sendOwnerMessageBtn");
+
+document.getElementById("contactOwnerBtn").onclick = () => {
+  ownerMessageSender.value = currentUser || "";
+  ownerMessageText.value = "";
+  ownerMessageStatus.textContent = "";
+  ownerMessageModal.style.display = "flex";
+  ownerMessageText.focus();
+};
+document.getElementById("cancelOwnerMessageBtn").onclick = () => {
+  ownerMessageModal.style.display = "none";
+};
+ownerMessageModal.addEventListener("click", (event) => {
+  if (event.target === ownerMessageModal) ownerMessageModal.style.display = "none";
+});
+sendOwnerMessageBtn.onclick = async () => {
+  const message = ownerMessageText.value.trim();
+  if (!message) {
+    ownerMessageStatus.textContent = "Write a message before sending.";
+    return;
+  }
+  sendOwnerMessageBtn.disabled = true;
+  ownerMessageStatus.textContent = "Sending…";
+  try {
+    const response = await fetch(`${SERVER_URL}/contact-owner`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: authToken } : {}) },
+      body: JSON.stringify({ sender: ownerMessageSender.value.trim(), message }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) throw new Error(result.error || `Server error (${response.status})`);
+    ownerMessageText.value = "";
+    ownerMessageStatus.textContent = "Message sent to the owner.";
+  } catch (error) {
+    ownerMessageStatus.textContent = error.message || "Could not send your message.";
+  } finally {
+    sendOwnerMessageBtn.disabled = false;
+  }
+};
 
 let currentPublicSaveIdForComments = null;
 let commentsPollTimer = null;
@@ -801,7 +878,7 @@ function updateAuthUI() {
   document.getElementById("loginBtn").style.display = currentUser ? "none" : "inline-block";
   document.getElementById("registerBtn").style.display = currentUser ? "none" : "inline-block";
   document.getElementById("logoutBtn").style.display = currentUser ? "inline-block" : "none";
-  document.getElementById("userStatus").innerText = currentUser ? `Logged in as ${currentUser}${isOwnerAccount ? " (admin: Ctrl+A)" : ""}` : "Not logged in";
+  document.getElementById("userStatus").innerText = currentUser ? `Logged in as ${currentUser}${isAdminAccount ? " (admin: Ctrl+A)" : ""}` : "Not logged in";
 }
 
 // Login
@@ -818,6 +895,7 @@ document.getElementById("loginBtn").onclick = () => {
         authToken = data.token;
         currentUser = data.username || username;
         isOwnerAccount = !!data.owner;
+        isAdminAccount = !!data.admin;
         updateAuthUI();
         loadSaves(); // load user saves
       } else {
@@ -860,6 +938,7 @@ document.getElementById("logoutBtn").onclick = () => {
   currentUser = null;
   authToken = null;
   isOwnerAccount = false;
+  isAdminAccount = false;
   updateAuthUI();
   // Clear local saves or show only local
 }
@@ -922,8 +1001,13 @@ let mouseDownRight = false;
 function resizeCanvas(){
   if (mp.active) { mp.fit(); return; }   // a shared room keeps its own grid size
   canvas.style.flex = canvas.style.alignSelf = canvas.style.width = canvas.style.height = "";
-  WIDTH = Math.floor((window.innerWidth - 250)/SIZE);
-  HEIGHT = Math.floor(window.innerHeight/SIZE);
+  canvas.style.marginLeft = canvas.style.marginRight = "";
+  const uiRect = document.getElementById("ui").getBoundingClientRect();
+  const stacked = window.innerWidth <= 640;
+  const availableWidth = stacked ? window.innerWidth : window.innerWidth - uiRect.width;
+  const availableHeight = stacked ? window.innerHeight - uiRect.height : window.innerHeight;
+  WIDTH = Math.max(20, Math.floor(availableWidth/SIZE));
+  HEIGHT = Math.max(20, Math.floor(availableHeight/SIZE));
   canvas.width = WIDTH*SIZE;
   canvas.height = HEIGHT*SIZE;
   createGrid();
@@ -3352,25 +3436,46 @@ function closeSaveModal(){
     saveModal.style.display = "none";
 }
 
-function saveCurrentGrid(name){
+async function saveCurrentGrid(name){
     if (!name) return;
 
-
-
-        let saves = JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
-        saves.push({ name, data: compressGrid(grid) });
-        try {
+        if (currentUser && authToken) {
+          try {
+            const response = await fetch(`${SERVER_URL}/save`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": authToken },
+              body: JSON.stringify({ name, data: compressGrid(grid) }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.success) throw new Error(result.error || "Could not save the grid.");
+          } catch (error) {
+            alert(error.message || "Could not save the grid.");
+            return;
+          }
+        } else {
+          let saves = JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+          saves.push({ name, data: compressGrid(grid) });
+          try {
             localStorage.setItem("pixelSandboxSaves", JSON.stringify(saves));
-        } catch(e) {
+          } catch(e) {
             alert("Failed to save: storage quota exceeded.");
+            return;
         }
+      }
+      await renderSaves();
     }
     saveBtn.onclick = openSaveModal;
 
     // --- Render saves ---
-    function renderSaves() {
+    async function renderSaves() {
         savesList.innerHTML = "";
-        let saves = JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+        let saves = [];
+        try {
+          saves = await loadSaves();
+        } catch (error) {
+          savesList.textContent = error.message || "Could not load saved grids.";
+          return;
+        }
 
         saves.forEach((save, index) => {
             const saveDiv = document.createElement("div");
@@ -3405,23 +3510,21 @@ function saveCurrentGrid(name){
             delBtn.style.marginLeft = "5px";
             delBtn.onclick = async (e) => {
   e.stopPropagation();
-  if (confirm(`Delete public save "${save.name}"?`)) {
+  if (confirm(`Delete saved grid "${save.name}"?`)) {
     try {
-      const res = await fetch(`${SERVER_URL}/delete_save/${save.id}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": authToken // include if your server requires auth
-        }
-      });
-      
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to delete");
+      if (currentUser && authToken && save.id !== undefined) {
+        const res = await fetch(`${SERVER_URL}/save/${save.id}`, {
+          method: "DELETE",
+          headers: { "Authorization": authToken }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || "Failed to delete");
+      } else {
+        const localSaves = JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+        localSaves.splice(index, 1);
+        localStorage.setItem("pixelSandboxSaves", JSON.stringify(localSaves));
       }
-
-      alert("Public save deleted.");
-      loadAndShowPublicSaves(); // refresh the list after deletion
+      await renderSaves();
     } catch (err) {
       console.error("Delete error:", err);
       alert("Failed to delete: " + err.message);
@@ -3446,11 +3549,11 @@ function saveCurrentGrid(name){
     closeSaveManager.onclick = () => {
         saveManager.style.display = "none";
     };
-confirmSaveBtn.onclick = () => {
+confirmSaveBtn.onclick = async () => {
     const name = saveNameInput.value.trim();
     if (!name) return;
 
-    saveCurrentGrid(name);
+    await saveCurrentGrid(name);
     closeSaveModal();
 };
 
@@ -3484,7 +3587,13 @@ updateStatus();
 (() => {
   "use strict";
 
-  const WS_URL = SERVER_URL.replace(/^http/i, "ws").replace(/\/+$/, "") + "/ws";
+  const WS_URL = (() => {
+    const endpoint = `${SERVER_URL}/ws`;
+    if (/^https?:\/\//i.test(endpoint)) return endpoint.replace(/^http/i, "ws");
+    const absolute = new URL(endpoint, location.href);
+    absolute.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    return absolute.href;
+  })();
   const SNAPSHOT_EVERY_MS = 2500;
   const REPLAY_WINDOW_MS = 700;      // own actions newer than this are re-applied after a snapshot
   const ROOM_CODE_RE = /^[A-Za-z0-9_-]{1,24}$/;
@@ -3779,6 +3888,7 @@ updateStatus();
     S.snapQueue.clear();
     clearInterval(S.snapTimer);
     S.snapTimer = null;
+    mp.fit();
   }
 
   function disconnect() {
@@ -3842,11 +3952,21 @@ updateStatus();
         S.want = r.kind === "lobby" ? { kind: "lobby" } : { kind: "private", code: r.code };
 
         if (r.w !== WIDTH || r.h !== HEIGHT) {
+          const previousGrid = grid;
+          const previousHeight = HEIGHT;
+          const previousWidth = WIDTH;
           WIDTH = r.w;
           HEIGHT = r.h;
           canvas.width = WIDTH * SIZE;
           canvas.height = HEIGHT * SIZE;
           createGrid();
+          if (m.created && previousGrid) {
+            for (let y = 0; y < Math.min(HEIGHT, previousHeight); y++) {
+              for (let x = 0; x < Math.min(WIDTH, previousWidth); x++) {
+                grid[y][x] = previousGrid[y][x];
+              }
+            }
+          }
         }
         S.synced = m.created;            // a creator's own canvas is the room's starting world
         S.cursors.clear();
@@ -4119,10 +4239,17 @@ updateStatus();
   mp.notice = (text) => { openChat(); addLine("error", text); };
 
   mp.fit = () => {
-    if (!mp.active) return;
-    const scale = Math.min(1, (window.innerWidth - 250) / canvas.width, window.innerHeight / canvas.height);
+    const bodyWidth = canvas.parentElement?.clientWidth || window.innerWidth;
+    const bodyHeight = canvas.parentElement?.clientHeight || window.innerHeight;
+    const uiRect = $("ui")?.getBoundingClientRect();
+    const stacked = window.innerWidth <= 640;
+    const availableWidth = Math.max(1, stacked ? bodyWidth : bodyWidth - (uiRect?.width || 250));
+    const availableHeight = Math.max(1, stacked ? bodyHeight - (uiRect?.height || 0) : bodyHeight);
+    const scale = Math.max(0.05, Math.min(1, availableWidth / canvas.width, availableHeight / canvas.height));
     canvas.style.flex = "none";
-    canvas.style.alignSelf = "flex-start";
+    canvas.style.alignSelf = "center";
+    canvas.style.marginLeft = "auto";
+    canvas.style.marginRight = "auto";
     canvas.style.width = Math.floor(canvas.width * scale) + "px";
     canvas.style.height = Math.floor(canvas.height * scale) + "px";
   };
@@ -4228,9 +4355,9 @@ updateStatus();
   }
 
   // ---------- API ----------
-  async function api(path, body) {
+  async function api(path, body, method) {
     const res = await fetch(API + path, {
-      method: body !== undefined ? "POST" : "GET",
+      method: method || (body !== undefined ? "POST" : "GET"),
       headers: { "Content-Type": "application/json", ...(authToken ? { Authorization: authToken } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
@@ -4245,7 +4372,7 @@ updateStatus();
     return data;
   }
 
-  const hasAccess = () => !!(authToken && isOwnerAccount);
+  const hasAccess = () => !!(authToken && isAdminAccount);
 
   // ---------- views ----------
   function close() {
@@ -4273,14 +4400,14 @@ updateStatus();
     hasAccess() ? renderPanel(box) : renderGate(box);
   }
 
-  // Shown to anyone who is not logged in as the Owner.
+  // Shown to anyone who is not logged in as an admin.
   function renderGate(box) {
     const loggedIn = !!authToken;
     box.append(
       el("h2", {}, "Admin"),
       el("div", {}, loggedIn
-        ? `You're logged in as ${currentUser}. Only the Owner account can use the admin tools.`
-        : "Admin tools are for the Owner account. Log in as Owner to use them."),
+        ? `You're logged in as ${currentUser}. An admin account is required for these tools.`
+        : "Admin tools require an admin account. Log in to continue."),
       el("div", { class: "admRow", style: "margin-top:10px" },
         loggedIn ? null : el("button", { onclick: () => { close(); document.getElementById("loginBtn").click(); } }, "Log in"),
         el("button", { onclick: close }, "Close"))
@@ -4296,6 +4423,9 @@ updateStatus();
     const myIpEl = el("div", { class: "admNote" });
     const playersEl = el("div");
     const bansEl = el("div");
+    const chatLogsEl = el("div");
+    const ownerMessagesEl = el("div");
+    const usersEl = el("div");
 
     async function ban(ip, scope, label) {
       const dur = duration.options[duration.selectedIndex].textContent.toLowerCase();
@@ -4325,6 +4455,74 @@ updateStatus();
       return el("table", {},
         el("thead", {}, el("tr", {}, ...headers.map((h) => el("th", {}, h)))),
         el("tbody", {}, ...rows));
+    }
+
+    async function loadChatLogs() {
+      try {
+        const logs = await api("/admin/chat-logs?limit=100");
+        chatLogsEl.replaceChildren(table(
+          ["Time", "Sender", "Room", "IP", "Message as sent", "Shown to players"],
+          logs.map((entry) => el("tr", {},
+            el("td", {}, new Date(entry.created).toLocaleString()),
+            el("td", {}, entry.sender),
+            el("td", {}, entry.room),
+            el("td", {}, entry.ip || "unknown"),
+            el("td", {}, entry.message),
+            el("td", {}, entry.displayedMessage))),
+          "No chat messages in the moderation log."));
+      } catch (e) {
+        chatLogsEl.replaceChildren(el("div", { class: "admMsg err" }, e.message));
+      }
+    }
+
+    async function loadOwnerMessages() {
+      try {
+        const messages = await api("/admin/owner-messages");
+        ownerMessagesEl.replaceChildren(table(
+          ["Status", "Time", "Sender", "IP", "Message", ""],
+          messages.map((entry) => el("tr", {},
+            el("td", {}, entry.read ? "Read" : "New"),
+            el("td", {}, new Date(entry.created).toLocaleString()),
+            el("td", {}, entry.sender),
+            el("td", {}, entry.ip || "unknown"),
+            el("td", {}, entry.message),
+            el("td", {}, entry.read ? "" : el("button", {
+              onclick: async () => {
+                try {
+                  await api(`/admin/owner-messages/${encodeURIComponent(entry.id)}/read`, {}, "POST");
+                  loadOwnerMessages();
+                } catch (e) { msg(e.message, "err"); }
+              },
+            }, "Mark read")))),
+          "The owner inbox is empty."));
+      } catch (e) {
+        ownerMessagesEl.replaceChildren(el("div", { class: "admMsg err" }, e.message));
+      }
+    }
+
+    async function loadAccounts() {
+      try {
+        const users = await api("/admin/users");
+        usersEl.replaceChildren(table(
+          ["Account", "Role", "Created", ""],
+          users.map((user) => el("tr", {},
+            el("td", {}, user.username),
+            el("td", {}, user.role),
+            el("td", {}, user.created ? new Date(user.created).toLocaleString() : "—"),
+            el("td", {}, isOwnerAccount && user.role !== "owner"
+              ? el("button", {
+                  onclick: async () => {
+                    try {
+                      await api(`/admin/users/${encodeURIComponent(user.username)}/admin`, { admin: user.role !== "admin" }, "PUT");
+                      loadAccounts();
+                    } catch (e) { msg(e.message, "err"); }
+                  },
+                }, user.role === "admin" ? "Remove admin" : "Grant admin")
+              : ""))),
+          "No accounts found."));
+      } catch (e) {
+        usersEl.replaceChildren(el("div", { class: "admMsg err" }, e.message));
+      }
     }
 
     async function refresh() {
@@ -4386,12 +4584,27 @@ updateStatus();
         el("button", { class: "danger", onclick: () => manualIp.value.trim() ? ban(manualIp.value.trim(), manualScope.value) : msg("Enter an IP address.", "err") }, "Ban")),
       el("h3", {}, "Active bans"),
       bansEl,
+      el("h3", {}, "Recent chat log"),
+      el("div", { class: "admRow" }, "Chat is filtered before delivery; this log includes the original text and sender IP.", el("button", { onclick: loadChatLogs }, "Refresh chat log")),
+      chatLogsEl,
+      el("h3", {}, "Messages to the owner"),
+      el("div", { class: "admRow" }, el("button", { onclick: loadOwnerMessages }, "Refresh inbox")),
+      ownerMessagesEl,
+      el("h3", {}, "Accounts and admin roles"),
+      isOwnerAccount
+        ? el("div", { class: "admNote" }, "Admins have the moderation and owner-inbox tools. Only the Owner account can grant or remove admin access.")
+        : el("div", { class: "admNote" }, "You can review accounts, but admin roles can only be changed by the Owner account."),
+      el("div", { class: "admRow" }, el("button", { onclick: loadAccounts }, "Refresh accounts")),
+      usersEl,
       el("div", { class: "admMsg" }),
       el("div", { class: "admNote" }, "IP bans are a blunt tool: people can change IP (VPN, mobile data), and everyone behind a shared IP (school, household) is affected too.")
     );
     for (const i of box.querySelectorAll("input")) i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") close(); };
 
     refresh();
+    loadChatLogs();
+    loadOwnerMessages();
+    loadAccounts();
     pollTimer = setInterval(refresh, 4000);
   }
 
