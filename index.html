@@ -3673,7 +3673,7 @@ updateStatus();
         const n = document.createElement("span");
         n.className = "mpName";
         n.style.color = colorFor(from);
-        n.textContent = (opts.admin ? "[Owner] " : "") + (opts.owner ? "★ " : "") + from + ": ";
+        n.textContent = (opts.admin ? "[Admin] " : "") + (opts.owner ? "★ " : "") + from + ": ";
         line.appendChild(n);
       }
       const t = document.createElement("span");
