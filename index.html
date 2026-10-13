@@ -446,7 +446,7 @@ closeErrorBtn.onclick = function() {
 <script>
 
 // Add ?server=http://localhost:3000 to the page URL to test against a local backend.
-const SERVER_URL = (new URLSearchParams(location.search).get("server") || "/api").replace(/\/+$/, "");
+const SERVER_URL = (new URLSearchParams(location.search).get("server") || "https://backend-c7h6.onrender.com/api").replace(/\/+$/, "");
 
 // Multiplayer hooks. The real implementations are installed by the multiplayer
 // script at the bottom of this file; these no-ops keep the game working offline.
