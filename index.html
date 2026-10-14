@@ -567,7 +567,7 @@ async function loadAndShowPublicSaves() {
   listDiv.innerHTML = '<p style="color:#ccc;">Loading public saves...</p>';
 
   try {
-    const res = await fetch(`${SERVER_URL}/public-saves`);
+    const res = await fetch(`${SERVER_URL}/lobby-saves`);
     
     if (!res.ok) {
       throw new Error(`Server returned ${res.status}`);
@@ -579,7 +579,7 @@ async function loadAndShowPublicSaves() {
     listDiv.innerHTML = "";
 
     if (!saves || saves.length === 0) {
-      listDiv.innerHTML = '<p style="color:#ccc;">No public saves found.</p>';
+      listDiv.innerHTML = '<p style="color:#ccc;">No saves are available in the multiplayer lobby yet.</p>';
       return;
     }
 
@@ -4416,7 +4416,9 @@ updateStatus();
 
   function renderPanel(box) {
     const duration = el("select", {},
-      ...[["Permanent", 0], ["1 hour", 60], ["24 hours", 1440], ["7 days", 10080], ["30 days", 43200]].map(([t, v]) => el("option", { value: v, textContent: t })));
+      ...[["Permanent", 0], ["1 hour", 60], ["24 hours", 1440], ["7 days", 10080], ["30 days", 43200], ["Custom…", -1]].map(([t, v]) => el("option", { value: v, textContent: t })));
+    const customMinutes = el("input", { type: "number", min: 1, max: 525600, placeholder: "Custom minutes", style: "width:130px;display:none" });
+    duration.onchange = () => { customMinutes.style.display = Number(duration.value) === -1 ? "inline-block" : "none"; };
     const reason = el("input", { type: "text", maxLength: 200, placeholder: "Reason (optional, shown to them)", style: "flex:1;min-width:180px" });
     const manualIp = el("input", { type: "text", placeholder: "IP address", style: "width:200px" });
     const manualScope = el("select", {}, el("option", { value: "multiplayer", textContent: "Multiplayer only" }), el("option", { value: "game", textContent: "Whole game" }));
@@ -4432,7 +4434,11 @@ updateStatus();
       const what = scope === "game" ? "the whole game (multiplayer, saves, login)" : "multiplayer";
       if (!confirm(`Ban ${label ? label + " — " : ""}${ip} from ${what} (${dur})?\n\nEveryone sharing this IP address will be affected.`)) return;
       try {
-        const r = await api("/admin/ban", { ip, scope, minutes: Number(duration.value), reason: reason.value });
+        const minutes = Number(duration.value) === -1 ? Number(customMinutes.value) : Number(duration.value);
+        if (!Number.isFinite(minutes) || minutes < 0 || minutes > 525600 || (Number(duration.value) === -1 && (!Number.isInteger(minutes) || minutes < 1))) {
+          msg("Enter a custom ban duration from 1 to 525,600 minutes.", "err"); return;
+        }
+        const r = await api("/admin/ban", { ip, scope, minutes, reason: reason.value });
         msg(`Banned ${ip}. Disconnected ${r.disconnected} connection(s).`, "ok");
         refresh();
       } catch (e) {
@@ -4504,10 +4510,16 @@ updateStatus();
       try {
         const users = await api("/admin/users");
         usersEl.replaceChildren(table(
-          ["Account", "Role", "Created", ""],
+          ["Account", "Role", "Credits", "Created", ""],
           users.map((user) => el("tr", {},
             el("td", {}, user.username),
             el("td", {}, user.role),
+            el("td", {}, `${user.credits ?? 0} `, el("button", { onclick: async () => {
+              const value = prompt(`Set credits for ${user.username}`, String(user.credits ?? 0));
+              if (value === null) return;
+              try { await api(`/admin/users/${encodeURIComponent(user.username)}/credits`, { credits: Number(value) }, "PUT"); loadAccounts(); }
+              catch (e) { msg(e.message, "err"); }
+            } }, "Set")),
             el("td", {}, user.created ? new Date(user.created).toLocaleString() : "—"),
             el("td", {}, isOwnerAccount && user.role !== "owner"
               ? el("button", {
@@ -4543,13 +4555,21 @@ updateStatus();
 
       const bannedIps = new Set(s.bans.map((b) => b.ip));
       playersEl.replaceChildren(table(
-        ["Name", "Where", "IP", ""],
+        ["Name", "Where", "IP", "Bot signals", ""],
         s.players.map((p) =>
           el("tr", {},
             el("td", {}, p.name + (p.authed ? " ✓" : "")),
             el("td", {}, p.room || "—"),
             el("td", {}, p.ip || "?"),
+            el("td", {}, p.suspicious ? `Score ${p.suspicious}/100 · ${(p.signals || []).join("; ")}` : "No strong signal"),
             el("td", { style: "white-space:nowrap;text-align:right" },
+              el("button", { class: "danger", onclick: async () => {
+                const why = prompt(`Kick ${p.name}? Reason (optional):`, "Rule violation");
+                if (why === null) return;
+                try { await api("/admin/kick", { id: p.id, reason: why }); msg(`Kicked ${p.name}.`, "ok"); refresh(); }
+                catch (e) { msg(e.message, "err"); }
+              } }, "Kick"), " ",
+
               !p.ip ? "" : bannedIps.has(p.ip) ? el("span", { class: "admNote" }, "banned") : el("span", {},
                 el("button", { class: "danger", onclick: () => ban(p.ip, "multiplayer", p.name) }, "Ban multiplayer"),
                 " ",
@@ -4576,8 +4596,8 @@ updateStatus();
           el("button", { onclick: close }, "Close"))),
       myIpEl,
       el("h3", {}, "Ban settings"),
-      el("div", { class: "admRow" }, "Duration:", duration, reason),
-      el("h3", {}, "Connected players"),
+      el("div", { class: "admRow" }, "Duration:", duration, customMinutes, reason),
+      el("h3", {}, "Live moderation · kicks and bot indicators"),
       playersEl,
       el("h3", {}, "Ban an IP manually"),
       el("div", { class: "admRow" }, manualIp, manualScope,
@@ -4590,7 +4610,7 @@ updateStatus();
       el("h3", {}, "Messages to the owner"),
       el("div", { class: "admRow" }, el("button", { onclick: loadOwnerMessages }, "Refresh inbox")),
       ownerMessagesEl,
-      el("h3", {}, "Accounts and admin roles"),
+      el("h3", {}, "Admin accounts · roles and credits"),
       isOwnerAccount
         ? el("div", { class: "admNote" }, "Admins have the moderation and owner-inbox tools. Only the Owner account can grant or remove admin access.")
         : el("div", { class: "admNote" }, "You can review accounts, but admin roles can only be changed by the Owner account."),
