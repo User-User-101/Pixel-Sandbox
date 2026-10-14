@@ -3204,20 +3204,32 @@ updateAuthUI();
         S.pending = null;
         S.want = r.kind === "lobby" ? { kind: "lobby" } : { kind: "private", code: r.code };
 
-        if (r.w !== WIDTH || r.h !== HEIGHT){
-          const prev = rawGrid;
-          const prevH = HEIGHT, prevW = WIDTH;
-          WIDTH = r.w; HEIGHT = r.h;
-          canvas.width = WIDTH * SIZE;
-          canvas.height = HEIGHT * SIZE;
-          createGrid();
-          if (m.created && prev){
-            for (let y = 0; y < Math.min(HEIGHT, prevH); y++)
-              for (let x = 0; x < Math.min(WIDTH, prevW); x++)
-                rawGrid[y][x] = prev[y][x];
-            applyBorderMode();
-          }
-        }
+       if (r.w !== WIDTH || r.h !== HEIGHT){
+  const prev = rawGrid;
+  const prevH = HEIGHT, prevW = WIDTH;
+
+  // Pick a pixel SIZE so the room's grid fills the viewport as closely as
+  // the integer constraint allows. This keeps the *visible* canvas size
+  // stable — joining a room never shrinks or grows the drawing area on
+  // screen; only the cell count and pixel size change.
+  const uiRect = document.getElementById("ui").getBoundingClientRect();
+  const stacked = window.innerWidth <= 720;
+  const availW = Math.max(1, stacked ? window.innerWidth : window.innerWidth - uiRect.width);
+  const availH = Math.max(1, stacked ? window.innerHeight - uiRect.height : window.innerHeight);
+  const best = Math.floor(Math.min(availW / r.w, availH / r.h));
+  SIZE = Math.max(1, Math.min(16, best));
+
+  WIDTH = r.w; HEIGHT = r.h;
+  canvas.width  = WIDTH  * SIZE;
+  canvas.height = HEIGHT * SIZE;
+  createGrid();
+  if (m.created && prev){
+    for (let y = 0; y < Math.min(HEIGHT, prevH); y++)
+      for (let x = 0; x < Math.min(WIDTH, prevW); x++)
+        rawGrid[y][x] = prev[y][x];
+    applyBorderMode();
+  }
+}
         S.synced = m.created;
         S.cursors.clear();
         S.recent.length = 0;
