@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>Pixel Sandbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
 :root{
   /* Pixel-art UI: chunky monospace, no anti-aliasing, crisp canvas scaling. */
@@ -267,6 +270,137 @@ canvas{
   #publicSavesModal, #saveManager{ left:8px !important; top:8px !important; width:calc(100vw - 16px) !important; height:80vh !important; }
   #commentsModal{ left:8px !important; top:8px !important; width:calc(100vw - 16px) !important; }
 }
+
+/* =====================================================================
+   PIXEL THEME  (overrides the rules above; readable pixel fonts)
+   VT323 for body text (big, clear), Press Start 2P for small headings.
+   Falls back to Courier / monospace if Google Fonts can't load.
+   ===================================================================== */
+:root{
+  --px-font: "VT323", "Lucida Console", "Courier New", monospace;
+  --px-head: "Press Start 2P", "VT323", "Courier New", monospace;
+  --ol:#000000; --panel:#141414; --panel2:#262626; --panel3:#0b0b0b;
+  --btn:#2f2f2f; --btn-hi:#454545; --bev-l:#5c5c5c; --bev-d:#0d0d0d;
+  --txt:#e6e6e6; --muted:#9b9b9b; --ui-accent:#ffe066; --danger:#9e2b2b;
+}
+html, body{ font-family:var(--px-font); font-size:17px; line-height:1.2; letter-spacing:0;
+  color:var(--txt); background:var(--panel3); -webkit-font-smoothing:auto; font-smooth:auto; color-scheme:dark; }
+
+/* panels */
+#ui{ background:var(--panel); border-right:0; width:272px; min-width:272px; flex:0 0 272px; padding:10px;
+  box-shadow: inset -4px 0 0 var(--ol), inset -8px 0 0 var(--panel2); }
+.modal, #ownerMessageBox, #creditsScreen .box, #saveModal .box, #admBox{
+  background:var(--panel) !important; border:0 !important; color:var(--txt);
+  box-shadow: 0 0 0 4px var(--ol), inset 0 0 0 4px var(--panel2) !important; padding:16px; }
+#mpChat{ border:0; background:rgba(8,8,8,.95); box-shadow:0 0 0 3px var(--ol), inset 0 0 0 3px var(--panel2); font-size:16px; }
+#mpHeader{ background:var(--panel2); font-family:var(--px-head); font-size:9px; padding:7px 8px; }
+#mpLog{ font-size:17px; line-height:1.15; }
+#mpDisclosure{ font-size:14px; color:var(--muted); }
+#mpInput{ font-size:17px; }
+
+/* headings */
+#ui h2,#ui h3,#ui h4,.modal h3,#ownerMessageBox h3,#creditsScreen h2,#saveModal h3{
+  font-family:var(--px-head); text-transform:uppercase; letter-spacing:0; line-height:1.5; color:var(--ui-accent); }
+#ui h2{ font-size:11px; border-bottom:4px solid var(--ol); padding-bottom:6px; margin:14px 0 8px; }
+#ui h3{ font-size:9px; margin:12px 0 6px; color:#cfcfcf; }
+#ui h4{ font-size:9px; margin:8px 0 4px; color:var(--muted); }
+.modal h3,#ownerMessageBox h3,#saveModal h3,#creditsScreen h2{ font-size:11px; margin-bottom:10px; }
+#versionLabel{ font-family:var(--px-font); font-size:15px; border:0; box-shadow:0 0 0 2px var(--ol); }
+
+/* buttons: chunky bevel */
+#ui button,.modal button,#ownerMessageBox button,#saveModal button,#creditsScreen button,#admBox button,#error-overlay button{
+  font-family:var(--px-font); font-size:17px; line-height:1.1; color:var(--txt);
+  background:var(--btn); border:0 !important; padding:6px 9px;
+  box-shadow: inset -3px -3px 0 var(--bev-d), inset 3px 3px 0 var(--bev-l), 0 0 0 3px var(--ol); }
+#ui button{ margin:0 0 7px 0; }
+#authSection button{ margin-right:7px; }
+#ui button:hover,.modal button:hover,#ownerMessageBox button:hover,#saveModal button:hover,#creditsScreen button:hover,#admBox button:hover{ background:var(--btn-hi); }
+#ui button:active,.modal button:active,#ownerMessageBox button:active,#saveModal button:active,#admBox button:active{
+  box-shadow: inset 3px 3px 0 var(--bev-d), inset -3px -3px 0 var(--bev-l), 0 0 0 3px var(--ol); transform:translateY(1px); }
+#ui button.active{ background:var(--btn-hi); box-shadow: inset 0 0 0 3px var(--ui-accent), 0 0 0 3px var(--ol); }
+#admBox button.danger{ background:var(--danger); }
+#admTabs button{ box-shadow:none !important; border-right:3px solid var(--ol) !important; }
+#admTabs button.active{ box-shadow: inset 0 -4px 0 var(--ui-accent) !important; background:#262626 !important; }
+#admTabs{ background:#0b0b0b !important; }
+
+/* inputs */
+#ui input[type=number],#ui input[type=text],#ui select,#ui textarea,.modal input[type=text],
+#ownerMessageBox input,#ownerMessageBox textarea,#commentInput,#mpInput,#admBox input,#admBox select,#admBox textarea{
+  font-family:var(--px-font); font-size:17px; color:var(--txt); background:var(--ol) !important;
+  border:0 !important; box-shadow: inset 3px 3px 0 #000, 0 0 0 3px var(--panel2); padding:5px 7px; margin:3px 3px 8px; width:calc(100% - 6px); }
+#mpInput{ box-shadow:none; margin:0; width:100%; }
+#admBox input,#admBox select{ width:auto; margin:0; }
+#ui input:focus,#ui select:focus,#ui textarea:focus,.modal input:focus,#ownerMessageBox :is(input,textarea):focus,#commentInput:focus,#admBox :is(input,select,textarea):focus{
+  outline:3px solid var(--ui-accent); outline-offset:1px; }
+#ui select,#admBox select{ appearance:none; -webkit-appearance:none; padding-right:26px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' shape-rendering='crispEdges' fill='%23ffe066'><rect width='10' height='2'/><rect x='2' y='2' width='6' height='2'/><rect x='4' y='4' width='2' height='2'/></svg>") !important;
+  background-repeat:no-repeat !important; background-position:right 8px center !important; }
+#ui input[type=checkbox]{ appearance:none; -webkit-appearance:none; width:16px !important; height:16px; margin:0 8px 0 0;
+  background:var(--ol); box-shadow:0 0 0 3px var(--panel2); vertical-align:-3px; cursor:pointer; }
+#ui input[type=checkbox]:checked{ background:var(--ui-accent); box-shadow:0 0 0 3px var(--panel2), inset 0 0 0 4px var(--ol); }
+#ui label{ color:var(--txt); margin:8px 0 4px; font-size:17px; }
+
+/* slider */
+#ui input[type=range]{ -webkit-appearance:none; appearance:none; background:transparent; height:22px; margin:4px 0 10px; box-shadow:none; }
+#ui input[type=range]::-webkit-slider-runnable-track{ height:8px; background:var(--ol); box-shadow:0 0 0 3px var(--panel2); }
+#ui input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:22px; margin-top:-7px; background:var(--ui-accent); border:0; box-shadow:0 0 0 3px var(--ol); }
+#ui input[type=range]::-moz-range-track{ height:8px; background:var(--ol); box-shadow:0 0 0 3px var(--panel2); }
+#ui input[type=range]::-moz-range-thumb{ width:14px; height:22px; border-radius:0; background:var(--ui-accent); border:0; box-shadow:0 0 0 3px var(--ol); }
+
+/* element picker, info boxes, property editor */
+#elementUI,#toolsPanel{ border:0; background:var(--panel3); box-shadow:0 0 0 3px var(--ol), inset 0 0 0 3px var(--panel2); padding:3px; height:300px; }
+#toolsPanel{ height:auto; padding:10px; }
+#elementTabs{ width:96px; border-right:3px solid var(--ol); background:var(--panel3); }
+#elementTabs button{ font-size:16px; padding:7px 6px; margin:0 0 3px; box-shadow:none; background:var(--panel2); }
+#elementTabs button.active{ background:var(--btn-hi); box-shadow: inset 5px 0 0 var(--ui-accent); outline:0; }
+#elementPanel{ padding:6px; }
+#elements button{ font-size:17px; margin-bottom:6px; padding:5px 8px; }
+#elements button.active{ border:0; background:var(--btn-hi); box-shadow: inset 0 0 0 3px var(--ui-accent), 0 0 0 3px var(--ol); }
+#info,#description,#statusBox{ background:var(--panel2); border:0; box-shadow:0 0 0 3px var(--ol); padding:8px; margin:3px; font-size:16px; line-height:1.15; color:var(--txt); }
+#description{ min-height:62px; } #statusBox{ min-height:44px; }
+#propEditor{ background:var(--panel3); border:0; box-shadow:0 0 0 3px var(--ol), inset 0 0 0 3px var(--panel2); padding:9px; font-size:16px; }
+#propEditor label{ color:var(--muted); }
+#propEditor textarea{ font-family:var(--px-font); font-size:16px; background:var(--ol); border:0; box-shadow:inset 3px 3px 0 #000, 0 0 0 3px var(--panel2); }
+#toolsPanel div[style*="font-size:10px"], #propEditor div{ font-size:15px !important; line-height:1.15; }
+#userStatus{ font-size:15px; color:var(--muted); margin-top:4px; }
+
+/* lists, comments, saves */
+.modal :is(div,span,p,button,label){ font-size:17px !important; }
+#commentsList,#publicSavesList,#savesList{ background:var(--panel3); border:0; box-shadow:0 0 0 3px var(--ol); }
+.commentItem{ background:var(--panel2); border:0; box-shadow:0 0 0 2px var(--ol); }
+.commentMeta{ font-size:15px !important; color:var(--muted); }
+#ownerMessageBox p,#ownerMessageStatus{ font-size:15px; color:var(--muted); }
+#creditsContent{ font-size:18px; line-height:1.3; }
+#error-overlay{ font-family:var(--px-font); font-size:18px; } #error-overlay pre{ font-size:16px; }
+#error-overlay h1{ font-family:var(--px-head); font-size:14px; margin-bottom:12px; }
+
+/* admin menu (its CSS is injected later, so !important) */
+#admRoot,#admBox,#admBox table,#admBox textarea{ font-family:var(--px-font) !important; font-size:17px !important; }
+#admBox th{ font-size:14px !important; } #admBox h2,#admBox h3{ font-family:var(--px-head) !important; font-size:11px !important; line-height:1.5; }
+.admNote{ font-size:15px !important; }
+
+/* pixel scrollbars */
+*{ scrollbar-width:thin; scrollbar-color:var(--bev-l) var(--ol); }
+::-webkit-scrollbar{ width:14px; height:14px; } ::-webkit-scrollbar-track{ background:var(--ol); }
+::-webkit-scrollbar-thumb{ background:var(--bev-l); box-shadow:inset -3px -3px 0 var(--btn), inset 0 0 0 0 transparent; border:2px solid var(--ol); }
+@media (max-width:720px){ #ui{ width:100%; min-width:0; box-shadow: inset 0 -4px 0 var(--ol), inset 0 -8px 0 var(--panel2); } }
+
+/* ---- element-colored UI ---- */
+#elements button.elBtn{ background:var(--c); color:var(--tc); text-shadow:var(--ts);
+  box-shadow: inset -3px -3px 0 var(--cd), inset 3px 3px 0 var(--cl), 0 0 0 3px var(--ol); }
+#elements button.elBtn:hover{ background:var(--c); filter:brightness(1.2); }
+#elements button.elBtn.active{ background:var(--c); border:0; position:relative; z-index:1;
+  box-shadow: inset -3px -3px 0 var(--cd), inset 3px 3px 0 var(--cl), 0 0 0 3px var(--ol), 0 0 0 6px var(--ui-accent); }
+#elementTabs button.elTab{ background:var(--c); color:var(--tc); text-shadow:var(--ts); filter:brightness(.72);
+  box-shadow: inset -3px -3px 0 var(--cd), inset 3px 3px 0 var(--cl); }
+#elementTabs button.elTab:hover{ filter:brightness(.95); }
+#elementTabs button.elTab.active{ background:var(--c); filter:none;
+  box-shadow: inset 0 0 0 3px var(--ui-accent), inset -6px -6px 0 var(--cd); }
+#ui input[type=range]::-webkit-slider-thumb{ background:var(--sel,var(--ui-accent)); }
+#ui input[type=range]::-moz-range-thumb{ background:var(--sel,var(--ui-accent)); }
+#ui #propTitle{ color:var(--sel,var(--ui-accent)); }
+#elementUI{ box-shadow:0 0 0 3px var(--ol), inset 0 0 0 3px var(--sel,var(--panel2)); }
+#info,#description{ box-shadow: inset 10px 0 0 var(--sw,transparent), 0 0 0 3px var(--ol); padding-left:20px; }
 </style>
 </head>
 <body>
@@ -373,7 +507,7 @@ canvas{
     </select>
 
     <label><input type="checkbox" id="ambientHeat" style="width:auto;"> Ambient heat</label>
-    <div style="color:#8fa; font-size:10px; margin-bottom:6px;">Air slowly pulls every pixel towards the air temperature.</div>
+    <div style="color:#8fa; font-size:10px; margin-bottom:6px;">Heat exchanges with the surroundings at the air temperature: air resets fast, exposed surfaces cool/warm faster than buried ones. Off = closed system.</div>
 
     <h4 id="propTitle">Properties: sand</h4>
     <div id="propEditor"></div>
@@ -461,7 +595,7 @@ const ctx = canvas.getContext("2d", { alpha: false });
 let WIDTH, HEIGHT;
 let SIZE = 4;              // smaller pixels — smaller = more cells = finer detail
 let airTemperature = 20;
-let ambientHeat = false;   // when off, air pixels don't pull everything to airTemperature
+let ambientHeat = false;   // when off the world is a closed heat system; when on, everything relaxes to airTemperature
 let paused = false;
 let mouseDownLeft = false;
 let mouseDownRight = false;
@@ -685,14 +819,8 @@ function addElement(name, data, section = "Other"){
 
 addElement("air", {
   color: p => `rgb(${Math.round(20 + p.temp / 8)},20,30)`,
-  update(x, y, p){
-    // Only pull temperature when "ambient heat" is enabled.
-    if (ambientHeat){
-      const diff = airTemperature - p.temp;
-      p.temp += diff * 0.02;
-    }
-  },
-  description: "Air. Conducts heat when Ambient heat is on."
+  update(){ /* air heat is handled by heatStep() */ },
+  description: "Air. Carries heat between things. With Ambient heat on, air snaps back to the air temperature."
 }, "Environment");
 
 addElement("metal", {
@@ -1874,6 +2002,66 @@ const SIM_ORDER = [
 ];
 const GAS_ORDER = ["steam","fire"];
 
+/* ---------------------------------------------------------------------
+   Heat model
+   - Conduction: heat flows between neighbours, conserved (no scan-order bias).
+     Metals conduct fast, wood/snow slowly, edges are insulated (loop wraps).
+   - Ambient heat ON: the surroundings are a big reservoir at the air temperature.
+     Air relaxes to it quickly, and solids/liquids lose or gain heat to it in
+     proportion to how many of their sides touch air (exposed surfaces change
+     temperature fastest, buried ones only via conduction).
+   - Ambient heat OFF: closed system, heat only moves between pixels.
+   --------------------------------------------------------------------- */
+const HEAT_K = { air:.03, metal:.10, wire:.10, iron:.07, mercury:.08, glass:.04, stone:.04,
+                 water:.04, saltwater:.04, ice:.03, wood:.015, snow:.01 };
+const HEAT_DEFAULT = .03;
+let heatBuf = null;
+
+function heatStep(){
+  const W = WIDTH, H = HEIGHT, loop = borderMode === "loop";
+  if (!heatBuf || heatBuf.length !== W * H) heatBuf = new Float32Array(W * H);
+  else heatBuf.fill(0);
+  const d = heatBuf;
+
+  for (let y = 0; y < H; y++){
+    for (let x = 0; x < W; x++){
+      const p = grid[y][x], i = y * W + x;
+      const kA = HEAT_K[p.type] ?? HEAT_DEFAULT;
+      let xr = x + 1; if (xr >= W) xr = loop ? 0 : -1;
+      if (xr >= 0){
+        const q = grid[y][xr];
+        const f = (kA + (HEAT_K[q.type] ?? HEAT_DEFAULT)) * 0.5 * (q.temp - p.temp);
+        d[i] += f; d[y * W + xr] -= f;
+      }
+      let yd = y + 1; if (yd >= H) yd = loop ? 0 : -1;
+      if (yd >= 0){
+        const q = grid[yd][x];
+        const f = (kA + (HEAT_K[q.type] ?? HEAT_DEFAULT)) * 0.5 * (q.temp - p.temp);
+        d[i] += f; d[yd * W + x] -= f;
+      }
+    }
+  }
+
+  for (let y = 0; y < H; y++){
+    for (let x = 0; x < W; x++){
+      const p = grid[y][x];
+      p.temp += d[y * W + x];
+      if (!ambientHeat) continue;
+      let rate;
+      if (p.type === "air") rate = 0.08;
+      else {
+        let exposed = 0;
+        if (x > 0 || loop)     { if (grid[y][x > 0 ? x - 1 : W - 1].type === "air") exposed++; }
+        if (x < W - 1 || loop) { if (grid[y][x < W - 1 ? x + 1 : 0].type === "air") exposed++; }
+        if (y > 0 || loop)     { if (grid[y > 0 ? y - 1 : H - 1][x].type === "air") exposed++; }
+        if (y < H - 1 || loop) { if (grid[y < H - 1 ? y + 1 : 0][x].type === "air") exposed++; }
+        rate = 0.0005 + 0.004 * exposed / 4;
+      }
+      p.temp += (airTemperature - p.temp) * rate;
+    }
+  }
+}
+
 function update(){
   if (paused) return;
 
@@ -1899,29 +2087,8 @@ function update(){
     }
   }
 
-  // Ambient heat: pull every pixel a little towards the air temperature.
-  if (ambientHeat){
-    for (let y = 0; y < HEIGHT; y++){
-      for (let x = 0; x < WIDTH; x++){
-        const p = grid[y][x];
-        if (p.type === "air") continue;
-        p.temp += (airTemperature - p.temp) * 0.004;
-      }
-    }
-  }
-
-  // Heat diffusion (local averaging).
-  for (let y = 0; y < HEIGHT; y++){
-    for (let x = 0; x < WIDTH; x++){
-      const p = grid[y][x];
-      let total = p.temp, count = 1;
-      for (const d of [[1,0],[-1,0],[0,1],[0,-1]]){
-        const nx = x + d[0], ny = y + d[1];
-        if (inBounds(nx, ny)){ total += grid[ny][nx].temp; count++; }
-      }
-      p.temp += (total / count - p.temp) * 0.1;
-    }
-  }
+  // Heat: conduction between neighbours + (optional) ambient exchange.
+  heatStep();
 
   // Void border: slowly consume the outermost ring.
   if (borderMode === "void"){
@@ -2865,6 +3032,367 @@ updateAuthUI();
 </script>
 
 <script>
+/* =====================================================================
+   PIXEL SANDBOX EXTRAS
+   - Real liquid physics (density, diagonal flow, level-seeking) for water,
+     oil, acid, lava
+   - New: gas, salt, saltwater, gunpowder, snow, mercury, honey, alcohol
+   - Electronics: wire, battery, switch(T), lamp, heater, cooler, igniter,
+     fuse, capacitor, clock, diode, not, and, or, nand, xor
+   ===================================================================== */
+(() => {
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+const DENSITY = { air:0, steam:-1, smoke:-1, gas:-2, alcohol:7, oil:8, water:10, saltwater:11,
+                  acid:12, honey:14, meltedplastic:15, mercury:20, lava:30 };
+const HOT = new Set(["fire","lava","sparks","plasma"]);
+
+// Faster type lookup for the main loop (it used Array.includes per cell).
+const simSet = new Set(SIM_ORDER);
+SIM_ORDER.includes = t => simSet.has(t);
+const regSim = n => { SIM_ORDER.push(n); simSet.add(n); };
+
+const mk = (t, o) => Object.assign(createPixel(t), o || {});
+const nbr = (x, y, dx, dy) => {
+  let nx = x + dx, ny = y + dy;
+  if (borderMode === "loop"){ nx = (nx + WIDTH) % WIDTH; ny = (ny + HEIGHT) % HEIGHT; }
+  else if (nx < 0 || ny < 0 || nx >= WIDTH || ny >= HEIGHT) return null;
+  return [nx, ny];
+};
+const nearHot = (x, y) => DIRS.some(d => { const n = nbr(x, y, d[0], d[1]); return n && HOT.has(grid[n[1]][n[0]].type); });
+const can = (d, nx, ny) => { if (!inBounds(nx, ny)) return false; const v = DENSITY[grid[ny][nx].type]; return v !== undefined && v < d; };
+const mvTo = (x, y, nx, ny) => { swap(x, y, nx, ny); grid[y][x].updated = true; grid[ny][nx].updated = true; };
+
+function fall(x, y, d, flow = 1){
+  if (flow < 1 && Math.random() > flow) return;
+  if (can(d, x, y+1)) return mvTo(x, y, x, y+1);
+  const s = Math.random() < .5 ? -1 : 1;
+  if (can(d, x+s, y+1)) return mvTo(x, y, x+s, y+1);
+  if (can(d, x-s, y+1)) return mvTo(x, y, x-s, y+1);
+}
+function liquidMove(x, y, d, spread = 5, flow = 1){
+  if (flow < 1 && Math.random() > flow) return;
+  if (can(d, x, y+1)) return mvTo(x, y, x, y+1);
+  const s = Math.random() < .5 ? -1 : 1;
+  if (can(d, x+s, y+1)) return mvTo(x, y, x+s, y+1);
+  if (can(d, x-s, y+1)) return mvTo(x, y, x-s, y+1);
+  for (const dir of [s, -s]){
+    let k = 0;
+    while (k < spread && can(d, x + dir*(k+1), y)) k++;
+    if (k) return mvTo(x, y, x + dir*k, y);
+  }
+}
+function blast(cx, cy, r, life = 25){
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++){
+    const nx = cx + dx, ny = cy + dy;
+    if (!inBounds(nx, ny) || dx*dx + dy*dy > r*r) continue;
+    if (Math.random() < .65) grid[ny][nx] = mk("fire", { life: life + Math.floor(Math.random()*15), temp: 600 });
+    else if (Math.random() < .4) grid[ny][nx] = mk("sparks", { life: 3, vx: Math.sign(dx), vy: Math.sign(dy) });
+  }
+  grid[cy][cx] = mk("fire", { life, temp: 600 });
+}
+
+/* ---------------- Fixed liquids ---------------- */
+elements.water.update = function(x, y, p){
+  if (p.updated) return; p.updated = true;
+  if (Math.random() < 0.0004 && DIRS.some(d => { const n = nbr(x,y,d[0],d[1]); return n && grid[n[1]][n[0]].type === "sand"; })){
+    grid[y][x] = createPixel("waterCritter"); return;
+  }
+  if (p.temp < 0){ grid[y][x] = mk("ice", { temp: p.temp }); return; }
+  if (p.temp >= 100){ grid[y][x] = mk("steam", { temp: p.temp }); return; }
+  for (const d of DIRS){                        // water + lava -> steam, lava cools
+    const n = nbr(x, y, d[0], d[1]); if (!n) continue;
+    const q = grid[n[1]][n[0]];
+    if (q.type === "lava"){ q.temp -= 250; grid[y][x] = mk("steam", { temp: 120 }); return; }
+  }
+  liquidMove(x, y, DENSITY.water, 6);
+};
+elements.oil.update = function(x, y, p){
+  if (p.updated) return; p.updated = true;
+  if (p.temp > 200 || (nearHot(x, y) && Math.random() < .2)){ grid[y][x] = mk("fire", { life: 40 }); return; }
+  liquidMove(x, y, DENSITY.oil, 5);             // now floats on water
+};
+elements.acid.update = function(x, y, p){
+  if (p.updated) return; p.updated = true;
+  const safe = ["air","acid","glass","plastic","stone","iron","metal","water","saltwater","mercury","oil"];
+  for (const d of [...DIRS,[1,1],[-1,1],[1,-1],[-1,-1]]){
+    const n = nbr(x, y, d[0], d[1]); if (!n) continue;
+    if (safe.includes(grid[n[1]][n[0]].type) || Math.random() > .1) continue;
+    grid[n[1]][n[0]] = createPixel("air");
+    if (Math.random() < .3){ grid[y][x] = createPixel("air"); return; }
+  }
+  liquidMove(x, y, DENSITY.acid, 4);
+};
+const lavaOld = elements.lava.update;
+elements.lava.update = function(x, y, p){
+  if (p.updated) return;
+  lavaOld(x, y, p);
+  if (grid[y][x] === p && p.type === "lava") liquidMove(x, y, DENSITY.lava, 2, .5);   // spreads slowly
+};
+
+/* ---------------- New elements ---------------- */
+addElement("gas", {
+  color: () => `rgba(200,230,150,${.35 + Math.random()*.2})`,
+  update(x, y, p){
+    if (p.updated) return; p.updated = true;
+    if (nearHot(x, y) || p.temp > 400){ blast(x, y, 3, 12); return; }
+    let dx = 0, dy = 0;
+    if (Math.random() < .4) dy = -1; else dx = Math.random() < .5 ? -1 : 1;
+    if (inBounds(x+dx, y+dy) && grid[y+dy][x+dx].type === "air") mvTo(x, y, x+dx, y+dy);
+  },
+  description: "Flammable gas. Drifts upward and explodes when it meets fire, sparks or lava."
+}, "Gases");
+
+addElement("salt", {
+  color: () => "#f1f1f1",
+  update(x, y, p){
+    if (p.updated) return; p.updated = true;
+    for (const d of DIRS){
+      const n = nbr(x, y, d[0], d[1]); if (!n) continue;
+      const q = grid[n[1]][n[0]];
+      if (q.type === "water" && Math.random() < .15){ grid[n[1]][n[0]] = mk("saltwater", { temp: q.temp }); grid[y][x] = createPixel("air"); return; }
+      if (q.type === "ice" && Math.random() < .05){ grid[n[1]][n[0]] = mk("water", { temp: 2 }); grid[y][x] = createPixel("air"); return; }
+    }
+    fall(x, y, 15);
+  },
+  description: "Salt. Sinks, dissolves into water making saltwater, and melts ice."
+}, "Powders");
+
+addElement("saltwater", {
+  color: () => "#4a8fd8",
+  update(x, y, p){
+    if (p.updated) return; p.updated = true;
+    if (p.temp >= 105){ grid[y][x] = mk("steam", { temp: p.temp }); return; }
+    if (p.temp < -15){ grid[y][x] = mk("ice", { temp: p.temp }); return; }
+    liquidMove(x, y, DENSITY.saltwater, 6);
+  },
+  description: "Saltwater. Denser than water, conducts electricity, freezes colder, boils hotter."
+}, "Liquids");
+
+addElement("gunpowder", {
+  color: () => "#555555",
+  update(x, y, p){
+    if (p.updated) return; p.updated = true;
+    if (nearHot(x, y) || p.temp > 250){ blast(x, y, 3, 14); return; }
+    fall(x, y, 12);
+  },
+  description: "Gunpowder. Falls like sand, small chain-reacting blast when ignited."
+}, "Explosives");
+
+addElement("snow", {
+  color: () => "#f4faff",
+  update(x, y, p){
+    if (p.updated) return; p.updated = true;
+    if (p.temp > 0){ grid[y][x] = mk("water", { temp: p.temp + 1 }); return; }
+    fall(x, y, 3, .5);
+  },
+  description: "Snow. Falls slowly, melts to water above 0 °C."
+}, "Powders");
+
+addElement("mercury", {
+  color: () => "#c9ced6",
+  update(x, y, p){ if (p.updated) return; p.updated = true; liquidMove(x, y, DENSITY.mercury, 3); },
+  description: "Mercury. Very dense liquid that sinks under everything and conducts electricity."
+}, "Liquids");
+
+addElement("honey", {
+  color: () => "#e0a020",
+  update(x, y, p){ if (p.updated) return; p.updated = true; liquidMove(x, y, DENSITY.honey, 1, .2); },
+  description: "Honey. Thick, slow liquid."
+}, "Liquids");
+
+addElement("alcohol", {
+  color: () => "#d9f2ff",
+  update(x, y, p){
+    if (p.updated) return; p.updated = true;
+    if (p.temp > 150 || nearHot(x, y)){ grid[y][x] = mk("fire", { life: 30, temp: 500 }); return; }
+    liquidMove(x, y, DENSITY.alcohol, 6);
+  },
+  description: "Alcohol. Thin liquid that floats on water and ignites very easily."
+}, "Liquids");
+["gas","salt","saltwater","gunpowder","snow","mercury","honey","alcohol"].forEach(regSim);
+
+/* ---------------- Electronics ----------------
+   Power flows instantly through connected conductors (wire, metal, iron,
+   saltwater, mercury, lamps, heaters...). Gates/diodes work left -> right and
+   take one tick: diode/not read the LEFT side, and/or/nand/xor read the TOP and
+   BOTTOM sides. Output goes to the RIGHT side.  Press T over a switch to flip it. */
+const COND = new Set(["wire","lamp","heater","cooler","igniter","fuse","metal","iron","saltwater","mercury"]);
+const GATES = { diode:(L)=>L, not:(L)=>!L, and:(L,T,B)=>T&&B, or:(L,T,B)=>T||B, nand:(L,T,B)=>!(T&&B), xor:(L,T,B)=>T!==B };
+const ELEC = new Set(["wire","battery","switch","lamp","heater","cooler","igniter","fuse","capacitor","clock",...Object.keys(GATES)]);
+let vis = null;
+window.__ELEC = ELEC;  // lets the multiplayer snapshot code sync electronics state
+
+function elecStep(){
+  const W = WIDTH, H = HEIGHT, list = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (ELEC.has(grid[y][x].type)) list.push(x, y);
+  if (!list.length) return;
+  if (!vis || vis.length !== W*H) vis = new Uint8Array(W*H); else vis.fill(0);
+  const stack = [];
+  const isC = q => COND.has(q.type) || (q.type === "switch" && q.charge > 0);
+  const push = (nx, ny) => { const i = ny*W + nx; if (!vis[i] && isC(grid[ny][nx])){ vis[i] = 1; stack.push(nx, ny); } };
+  const seed = (x, y, ds) => { for (const d of ds){ const n = nbr(x, y, d[0], d[1]); if (n) push(n[0], n[1]); } };
+  const flood = () => { while (stack.length){ const y = stack.pop(), x = stack.pop(); seed(x, y, DIRS); } };
+  const gates = [], caps = [];
+
+  for (let i = 0; i < list.length; i += 2){
+    const x = list[i], y = list[i+1], p = grid[y][x], t = p.type;
+    if (t === "battery"){ vis[y*W+x] = 1; seed(x, y, DIRS); }
+    else if (t === "clock"){ p.tk = (p.tk || 0) + 1; p.on = (p.tk % 24) < 12; if (p.on){ vis[y*W+x] = 1; seed(x, y, DIRS); } }
+    else if (GATES[t]){ gates.push(i); if (p.charge > 0) seed(x, y, [[1,0]]); }
+    else if (t === "capacitor") caps.push(i);
+  }
+  flood();
+
+  // Capacitors: charge from externally powered neighbours, otherwise discharge.
+  const dis = [];
+  for (const i of caps){
+    const x = list[i], y = list[i+1], p = grid[y][x];
+    const ext = DIRS.some(d => { const n = nbr(x, y, d[0], d[1]); return n && vis[n[1]*W + n[0]]; });
+    if (ext) p.charge = Math.min(100, (p.charge|0) + 5);
+    else if (p.charge > 0){ p.charge--; dis.push(x, y); }
+  }
+  for (let i = 0; i < dis.length; i += 2) seed(dis[i], dis[i+1], DIRS);
+  flood();
+
+  // Gates (computed from this tick, applied together).
+  const inp = (x, y, dx, dy) => {
+    const n = nbr(x, y, dx, dy); if (!n) return false;
+    if (vis[n[1]*W + n[0]]) return true;
+    const q = grid[n[1]][n[0]];
+    return dx === -1 && !!GATES[q.type] && q.charge > 0;
+  };
+  const res = gates.map(i => { const x = list[i], y = list[i+1];
+    return GATES[grid[y][x].type](inp(x,y,-1,0), inp(x,y,0,-1), inp(x,y,0,1)) ? 1 : 0; });
+  gates.forEach((i, k) => { grid[list[i+1]][list[i]].charge = res[k]; });
+
+  // Consumers.
+  for (let i = 0; i < list.length; i += 2){
+    const x = list[i], y = list[i+1], p = grid[y][x], t = p.type;
+    if (!ELEC.has(p.type)) continue;
+    const on = vis[y*W + x] === 1;
+    p.pw = on;
+    if (p.temp > 900){ grid[y][x] = mk("fire", { life: 20, temp: 600 }); continue; }   // melts
+    if (!on) continue;
+    if (t === "heater" || t === "cooler" || t === "igniter"){
+      for (const d of DIRS){
+        const n = nbr(x, y, d[0], d[1]); if (!n) continue;
+        const q = grid[n[1]][n[0]];
+        if (t === "heater" && q.temp < 500) q.temp += 10;
+        else if (t === "cooler" && q.temp > -100) q.temp -= 8;
+        else if (t === "igniter"){
+          if (q.type === "air" && Math.random() < .5) grid[n[1]][n[0]] = mk("fire", { life: 14, temp: 500 });
+          else if (q.temp < 700) q.temp += 40;
+        }
+      }
+    }
+    if (t === "fuse"){ p.fuse = (p.fuse || 30) - 1; if (p.fuse <= 0) grid[y][x] = mk("fire", { life: 10, temp: 500 }); }
+  }
+}
+const updateOld = update;
+update = function(){ if (paused) return; updateOld(); elecStep(); };
+
+const lit = (on, off) => p => p.pw ? on : off;
+addElement("wire",    { color: lit("#ffe066","#b87333"), description: "Copper wire. Carries power; glows yellow when live." }, "Electronics");
+addElement("battery", { color: () => "#22b84c", description: "Battery. Always powers every wire touching it." }, "Electronics");
+addElement("switch",  { color: p => p.charge > 0 ? "#7dff7d" : "#b33", description: "Switch. Hover and press T to flip it. Green = closed (conducts)." }, "Electronics");
+addElement("lamp",    { color: lit("#fffbd0","#4a4a4a"), description: "Lamp. Lights up when powered." }, "Electronics");
+addElement("heater",  { color: lit("#ff5a33","#7a3a2a"), description: "Heater. Warms neighbours (to ~500 °C) while powered." }, "Electronics");
+addElement("cooler",  { color: lit("#66ccff","#2f4f66"), description: "Cooler. Chills neighbours (down to -100 °C) while powered." }, "Electronics");
+addElement("igniter", { color: lit("#ffd24a","#8a5a1a"), description: "Igniter. When powered, spits fire and heats neighbours. Use as a detonator." }, "Electronics");
+addElement("fuse",    { color: lit("#ffcc66","#c9b28a"), description: "Fuse. Conducts, but burns out after ~30 powered ticks." }, "Electronics");
+addElement("capacitor", { color: p => `rgb(${60 + (p.charge|0)},${70 + Math.round((p.charge|0)*1.3)},170)`,
+  description: "Capacitor. Charges from live wires and powers neighbours when the supply is cut." }, "Electronics");
+addElement("clock",   { color: p => p.on ? "#66ffee" : "#116a66", description: "Clock. Pulses power on all sides (12 ticks on, 12 off)." }, "Electronics");
+const gateInfo = {
+  diode:["#8888ff","Diode. Left input -> right output, one-way."],
+  not:  ["#cc66cc","NOT gate. Output on when LEFT input is off."],
+  and:  ["#5577dd","AND gate. TOP and BOTTOM inputs both on -> RIGHT output on."],
+  or:   ["#55aadd","OR gate. TOP or BOTTOM input on -> RIGHT output on."],
+  nand: ["#dd7755","NAND gate. Output on unless TOP and BOTTOM are both on."],
+  xor:  ["#ddaa55","XOR gate. Output on when exactly one of TOP / BOTTOM is on."]
+};
+for (const [n, [c, d]] of Object.entries(gateInfo))
+  addElement(n, { color: p => p.charge > 0 ? "#ffffff" : c, description: d + " Inputs/outputs are wire-adjacent; 1 tick delay." }, "Electronics");
+
+/* Save-format ids for the new elements (continues after metal = 34). */
+["gas","salt","saltwater","gunpowder","snow","mercury","honey","alcohol","wire","battery","switch","lamp",
+ "heater","cooler","igniter","fuse","capacitor","clock","diode","not","and","or","nand","xor"]
+  .forEach((n, i) => { typeMap[n] = 35 + i; revTypeMap[35 + i] = n; });
+
+/* T flips switches under the brush. */
+document.addEventListener("keydown", e => {
+  if (e.key.toLowerCase() !== "t" || e.ctrlKey || e.metaKey || e.altKey) return;
+  const tg = e.target;
+  if (tg && (tg.tagName === "TEXTAREA" || (tg.tagName === "INPUT" && tg.type !== "range"))) return;
+  for (let dy = 0; dy < brushSize; dy++) for (let dx = 0; dx < brushSize; dx++){
+    const q = grid[mouseY + dy]?.[mouseX + dx];
+    if (q && q.type === "switch") q.charge = q.charge > 0 ? 0 : 1;
+  }
+});
+})();
+</script>
+
+<script>
+/* ================= ELEMENT-COLORED UI ================= */
+(() => {
+  const sc = document.createElement("canvas"); sc.width = sc.height = 1;
+  const sx = sc.getContext("2d", { willReadFrequently: true });
+  const rgbOf = css => {                       // any CSS colour (names, rgba, hex) -> [r,g,b] over a dark backdrop
+    sx.fillStyle = "#111"; sx.fillRect(0, 0, 1, 1);
+    sx.fillStyle = css;    sx.fillRect(0, 0, 1, 1);
+    const d = sx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]];
+  };
+  const lum = c => (0.299*c[0] + 0.587*c[1] + 0.114*c[2]) / 255;
+  const mix = (c, t, a) => c.map((v, i) => Math.round(v + (t[i] - v) * a));
+  const css = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const sample = name => { try { return rgbOf(elements[name].color(createPixel(name))); } catch { return [90, 90, 110]; } };
+
+  function tint(node, c){
+    const L = lum(c);
+    node.style.setProperty("--c",  css(c));
+    node.style.setProperty("--cl", css(mix(c, [255,255,255], .35)));
+    node.style.setProperty("--cd", css(mix(c, [0,0,0], .45)));
+    node.style.setProperty("--tc", L > .55 ? "#10111a" : "#ffffff");
+    node.style.setProperty("--ts", L > .55 ? "none" : "1px 1px 0 rgba(0,0,0,.65)");
+  }
+  const root = document.documentElement;
+  function setSel(name){
+    const c = sample(name);
+    root.style.setProperty("--sel", css(lum(c) < .3 ? mix(c, [255,255,255], .55) : c));   // keep it visible on dark panels
+  }
+
+  const REP = { Environment:"cloud", Solids:"stone", Explosives:"explosive", Gases:"steam", Liquids:"water",
+                Powders:"sand", Plants:"grass", Life:"grassCritter", Electronics:"wire" };
+
+  for (const [section, sec] of Object.entries(elementSections)){
+    for (const b of sec.buttons){
+      b.classList.add("elBtn");
+      tint(b, sample(b.dataset.element));
+      b.addEventListener("click", () => setSel(b.dataset.element));
+      b.addEventListener("mouseenter", () => document.getElementById("description").style.setProperty("--sw", css(sample(b.dataset.element))));
+      b.addEventListener("mouseleave", () => document.getElementById("description").style.removeProperty("--sw"));
+    }
+    const rep = (REP[section] && elements[REP[section]]) ? REP[section] : sec.buttons[0]?.dataset.element;
+    sec.tab.classList.add("elTab");
+    if (rep) tint(sec.tab, sample(rep));
+  }
+
+  // Start with sand selected (matches currentElement) and show it as selected.
+  const sandBtn = elementSections.Powders?.buttons.find(b => b.dataset.element === currentElement);
+  if (sandBtn) sandBtn.classList.add("active");
+  setSel(currentElement);
+
+  // Info box gets a colour bar matching the pixel under the cursor.
+  const info = document.getElementById("info");
+  canvas.addEventListener("mousemove", () => {
+    const p = grid[mouseY]?.[mouseX]; if (!p) return;
+    let c = "transparent"; try { c = elements[p.type].color(p); } catch {}
+    info.style.setProperty("--sw", c);
+  });
+})();
+</script>
+
+<script>
 /* ================= MULTIPLAYER (with a draggable window) ================= */
 (() => {
   "use strict";
@@ -3348,7 +3876,7 @@ canvas.style.height = displayH + "px";
         dv.setUint8(o, idx[p.type] ?? idx.air ?? 0);
         dv.setUint8(o + 1, clamp(Math.round(p.wet * 100), 0, 255));
         dv.setUint8(o + 2, p.burning ? 1 : 0);
-        dv.setUint8(o + 3, clamp(p.grace | 0, 0, 255));
+        dv.setUint8(o + 3, clamp(Math.max(p.grace | 0, p.charge | 0), 0, 255));
         dv.setInt16(o + 4, clamp(Math.round(p.temp), -32000, 32000));
         dv.setUint16(o + 6, clamp(Math.round(p.life || 0), 0, 65535));
       }
@@ -3450,7 +3978,7 @@ canvas.style.height = displayH + "px";
         };
         if (dv.getUint8(o + 2) & 1) px.burning = true;
         const g = dv.getUint8(o + 3);
-        if (g) px.grace = g;
+        if (g){ px.grace = g; if (window.__ELEC && window.__ELEC.has(px.type)) px.charge = g; }
         row[x] = px;
       }
     }
@@ -3502,7 +4030,7 @@ canvas.style.height = displayH + "px";
     if (!mp.active || !S.cursors.size) return;
     const now = performance.now();
     c.save();
-    c.font = "11px 'Courier New', monospace";
+    c.font = "15px 'VT323', 'Courier New', monospace";
     c.lineWidth = 2;
     for (const [id, cur] of S.cursors){
       if (now - cur.ts > 5000){ S.cursors.delete(id); continue; }
@@ -3516,7 +4044,7 @@ canvas.style.height = displayH + "px";
       let ly = py - 3;
       if (ly < 12) ly = py + side + 13;
       c.fillStyle = "rgba(0,0,0,.7)";
-      c.fillRect(px, ly - 11, tw + 6, 14);
+      c.fillRect(px, ly - 13, tw + 6, 17);
       c.fillStyle = col;
       c.fillText(member.name, px + 3, ly);
     }
