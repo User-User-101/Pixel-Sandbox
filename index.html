@@ -336,6 +336,37 @@ closeErrorBtn.onclick = function() {
 <button id="browsePublicBtn">Browse Public Saves</button>
 <button id="mpOpenBtn" style="font-weight:bold;">Multiplayer Chat</button>
 <button id="contactOwnerBtn">Message the owner</button>
+<button id="creditsBtn" type="button">Credits</button>
+
+<div id="creditsScreen" role="dialog" aria-modal="true" aria-labelledby="creditsTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:50000;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;">
+  <div style="width:min(560px,100%);max-height:85vh;overflow:auto;background:#222;color:#eee;border:2px solid #666;border-radius:10px;padding:22px;box-sizing:border-box;font-family:Arial,sans-serif;">
+    <h2 id="creditsTitle" style="margin-top:0;">Pixel Sandbox Credits</h2>
+    <div id="creditsContent" style="white-space:pre-wrap;line-height:1.55;overflow-wrap:anywhere;">Loading credits…</div>
+    <button id="closeCreditsBtn" type="button">Close Credits</button>
+  </div>
+</div>
+
+<script>
+  async function loadCreditsScreen() {
+    const title = document.getElementById("creditsTitle");
+    const content = document.getElementById("creditsContent");
+    try {
+      const response = await fetch(`${SERVER_URL}/credits`);
+      if (!response.ok) throw new Error("Could not load credits.");
+      const credits = await response.json();
+      title.textContent = credits.title || "Pixel Sandbox Credits";
+      content.textContent = credits.content || "";
+    } catch (_) {
+      content.textContent = "Credits could not be loaded right now. Please try again.";
+    }
+  }
+  document.getElementById("creditsBtn").addEventListener("click", () => {
+    document.getElementById("creditsScreen").style.display = "flex";
+    loadCreditsScreen();
+  });
+  document.getElementById("closeCreditsBtn").addEventListener("click", () => { document.getElementById("creditsScreen").style.display = "none"; });
+  document.getElementById("creditsScreen").addEventListener("click", (event) => { if (event.target.id === "creditsScreen") event.currentTarget.style.display = "none"; });
+</script>
 
 <div id="publicSavesModal" style="
   display:none;
@@ -4428,6 +4459,9 @@ updateStatus();
     const chatLogsEl = el("div");
     const ownerMessagesEl = el("div");
     const usersEl = el("div");
+    const creditsTitleInput = el("input", { type: "text", maxLength: 100, placeholder: "Credits screen title", style: "width:100%;box-sizing:border-box" });
+    const creditsContentInput = el("textarea", { rows: 9, maxLength: 12000, placeholder: "Credits text, acknowledgments, attributions…", style: "width:100%;box-sizing:border-box;background:#111;color:#fff;border:1px solid #555;border-radius:4px;padding:8px;font:inherit;resize:vertical" });
+    const creditsStatus = el("div", { class: "admNote" });
 
     async function ban(ip, scope, label) {
       const dur = duration.options[duration.selectedIndex].textContent.toLowerCase();
@@ -4506,20 +4540,31 @@ updateStatus();
       }
     }
 
+    async function loadCreditsEditor() {
+      try {
+        const credits = await api("/admin/credits");
+        creditsTitleInput.value = credits.title || "";
+        creditsContentInput.value = credits.content || "";
+        creditsStatus.textContent = "Credits are saved on the server and shown to all players.";
+      } catch (e) { creditsStatus.textContent = e.message; }
+    }
+
+    async function saveCreditsEditor() {
+      try {
+        const result = await api("/admin/credits", { title: creditsTitleInput.value, content: creditsContentInput.value }, "PUT");
+        creditsStatus.textContent = "Credits saved. Players will see the updated text the next time they open Credits.";
+        creditsStatus.className = "admNote admMsg ok";
+      } catch (e) { creditsStatus.textContent = e.message; creditsStatus.className = "admNote admMsg err"; }
+    }
+
     async function loadAccounts() {
       try {
         const users = await api("/admin/users");
         usersEl.replaceChildren(table(
-          ["Account", "Role", "Credits", "Created", ""],
+          ["Account", "Role", "Created", ""],
           users.map((user) => el("tr", {},
             el("td", {}, user.username),
             el("td", {}, user.role),
-            el("td", {}, `${user.credits ?? 0} `, el("button", { onclick: async () => {
-              const value = prompt(`Set credits for ${user.username}`, String(user.credits ?? 0));
-              if (value === null) return;
-              try { await api(`/admin/users/${encodeURIComponent(user.username)}/credits`, { credits: Number(value) }, "PUT"); loadAccounts(); }
-              catch (e) { msg(e.message, "err"); }
-            } }, "Set")),
             el("td", {}, user.created ? new Date(user.created).toLocaleString() : "—"),
             el("td", {}, isOwnerAccount && user.role !== "owner"
               ? el("button", {
@@ -4610,7 +4655,13 @@ updateStatus();
       el("h3", {}, "Messages to the owner"),
       el("div", { class: "admRow" }, el("button", { onclick: loadOwnerMessages }, "Refresh inbox")),
       ownerMessagesEl,
-      el("h3", {}, "Admin accounts · roles and credits"),
+      el("h3", {}, "Credits screen · editable by admins"),
+      el("div", { class: "admNote" }, "Edit the public Credits screen title and text. Line breaks are preserved; HTML is displayed as text."),
+      el("div", { class: "admRow", style: "display:block" }, creditsTitleInput),
+      el("div", { class: "admRow", style: "display:block" }, creditsContentInput),
+      el("div", { class: "admRow" }, el("button", { onclick: loadCreditsEditor }, "Reload credits"), el("button", { onclick: saveCreditsEditor }, "Save credits")),
+      creditsStatus,
+      el("h3", {}, "Admin accounts · roles"),
       isOwnerAccount
         ? el("div", { class: "admNote" }, "Admins have the moderation and owner-inbox tools. Only the Owner account can grant or remove admin access.")
         : el("div", { class: "admNote" }, "You can review accounts, but admin roles can only be changed by the Owner account."),
@@ -4619,12 +4670,13 @@ updateStatus();
       el("div", { class: "admMsg" }),
       el("div", { class: "admNote" }, "IP bans are a blunt tool: people can change IP (VPN, mobile data), and everyone behind a shared IP (school, household) is affected too.")
     );
-    for (const i of box.querySelectorAll("input")) i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") close(); };
+    for (const i of box.querySelectorAll("input, textarea")) i.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") close(); };
 
     refresh();
     loadChatLogs();
     loadOwnerMessages();
     loadAccounts();
+    loadCreditsEditor();
     pollTimer = setInterval(refresh, 4000);
   }
 
