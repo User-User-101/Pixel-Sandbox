@@ -385,6 +385,10 @@ html, body{ font-family:var(--px-font); font-size:17px; line-height:1.2; letter-
 ::-webkit-scrollbar-thumb{ background:var(--bev-l); box-shadow:inset -3px -3px 0 var(--btn), inset 0 0 0 0 transparent; border:2px solid var(--ol); }
 @media (max-width:720px){ #ui{ width:100%; min-width:0; box-shadow: inset 0 -4px 0 var(--ol), inset 0 -8px 0 var(--panel2); } }
 
+/* ---- server messages in chat ---- */
+.mpLine.announce{ background:rgba(255,224,102,.14); box-shadow:inset 4px 0 0 var(--ui-accent); padding:3px 6px 3px 10px; margin:4px 0; }
+.mpLine.announce .mpName, .mpLine.announce .mpText{ color:var(--ui-accent) !important; }
+
 /* ---- element-colored UI ---- */
 #elements button.elBtn{ background:var(--c); color:var(--tc); text-shadow:var(--ts);
   box-shadow: inset -3px -3px 0 var(--cd), inset 3px 3px 0 var(--cl), 0 0 0 3px var(--ol); }
@@ -2110,10 +2114,6 @@ function update(){
 /* =====================================================================
    DRAW
    ===================================================================== */
-// Declare line-preview state before the first animation frame runs.
-// The render loop starts before the mouse handlers are registered below.
-let linePreview = null;
-let lineDragActive = false;
 let mouseX = 0, mouseY = 0;
 
 function draw(){
@@ -2128,25 +2128,6 @@ function draw(){
       ctx.fillStyle = el.color(p);
       ctx.fillRect(x * SIZE, y * SIZE, SIZE, SIZE);
     }
-  }
-
-  // Live straight-line preview while Shift-dragging.
-  if (linePreview) {
-    const pts = lineStamps(linePreview.x0, linePreview.y0, linePreview.x1, linePreview.y1, brushSize);
-    const previewColor = elements[currentElement]?.color
-      ? elements[currentElement].color(createPixel(currentElement))
-      : "#ffffff";
-    ctx.save();
-    ctx.globalAlpha = 0.58;
-    ctx.fillStyle = previewColor;
-    for (const [x, y] of pts) {
-      for (let dy = 0; dy < brushSize; dy++) {
-        for (let dx = 0; dx < brushSize; dx++) {
-          ctx.fillRect((x + dx) * SIZE, (y + dy) * SIZE, SIZE, SIZE);
-        }
-      }
-    }
-    ctx.restore();
   }
 
   // Brush outline (crisp, no anti-aliasing).
@@ -2196,63 +2177,16 @@ canvas.addEventListener("mousemove", e => {
   }
 });
 
-// Hold Shift + left mouse button and drag to preview a straight line.
-// Releasing the mouse places the line; the simulation is unchanged while previewing.
-function canvasGridPosition(e) {
-  const rect = canvas.getBoundingClientRect();
-  const sx = rect.width ? canvas.width / rect.width : 1;
-  const sy = rect.height ? canvas.height / rect.height : 1;
-  return [
-    Math.max(0, Math.min(WIDTH - 1, Math.floor((e.clientX - rect.left) * sx / SIZE))),
-    Math.max(0, Math.min(HEIGHT - 1, Math.floor((e.clientY - rect.top) * sy / SIZE)))
-  ];
-}
-
 canvas.addEventListener("mousedown", e => {
-  if (e.button === 0 && e.shiftKey) {
-    e.preventDefault();
-    const [x, y] = canvasGridPosition(e);
-    lineDragActive = true;
-    linePreview = { x0: x, y0: y, x1: x, y1: y };
-    mouseDownLeft = false;
-    moveTrail.length = 0;
-    strokeLast.left = null;
-    return;
-  }
-
   if (e.button === 0) mouseDownLeft = true;
   if (e.button === 2) mouseDownRight = true;
 });
-
-canvas.addEventListener("mousemove", e => {
-  if (!lineDragActive || !linePreview) return;
-  const [x, y] = canvasGridPosition(e);
-  linePreview.x1 = x;
-  linePreview.y1 = y;
-});
-
-function finishLineDrag() {
-  if (!lineDragActive || !linePreview) return;
-  const line = linePreview;
-  lineDragActive = false;
-  linePreview = null;
-  strokePaint(line.x0, line.y0, line.x1, line.y1);
-  moveTrail.length = 0;
-  strokeLast.left = null;
-}
-
 canvas.addEventListener("mouseup", e => {
-  if (e.button === 0) {
-    if (lineDragActive) finishLineDrag();
-    mouseDownLeft = false;
-  }
+  if (e.button === 0) mouseDownLeft = false;
   if (e.button === 2) mouseDownRight = false;
 });
 window.addEventListener("mouseup", e => {
-  if (e.button === 0) {
-    if (lineDragActive) finishLineDrag();
-    mouseDownLeft = false;
-  }
+  if (e.button === 0) mouseDownLeft = false;
   if (e.button === 2) mouseDownRight = false;
 });
 
@@ -2565,9 +2499,6 @@ const typeMap = {
   liquidHydrogen:33, metal:34
 };
 const revTypeMap = Object.fromEntries(Object.entries(typeMap).map(([k, v]) => [v, k]));
-// Expose save-format maps for optional elements registered by later script blocks.
-window.typeMap = typeMap;
-window.revTypeMap = revTypeMap;
 
 function compressGrid(g){
   return g.map(row => row.map(p => ({
@@ -3444,12 +3375,7 @@ for (const [n, [c, d]] of Object.entries(gateInfo))
 /* Save-format ids for the new elements (continues after metal = 34). */
 ["gas","salt","saltwater","gunpowder","snow","mercury","honey","alcohol","wire","battery","switch","lamp",
  "heater","cooler","igniter","fuse","capacitor","clock","diode","not","and","or","nand","xor"]
-  .forEach((n, i) => {
-    if (!window.typeMap) window.typeMap = {};
-    if (!window.revTypeMap) window.revTypeMap = {};
-    window.typeMap[n] = 35 + i;
-    window.revTypeMap[35 + i] = n;
-  });
+  .forEach((n, i) => { typeMap[n] = 35 + i; revTypeMap[35 + i] = n; });
 
 /* T flips switches under the brush. */
 document.addEventListener("keydown", e => {
@@ -3539,7 +3465,7 @@ document.addEventListener("keydown", e => {
   const SNAPSHOT_EVERY_MS = 2500;
   const REPLAY_WINDOW_MS = 700;
   const ROOM_CODE_RE = /^[A-Za-z0-9_-]{1,24}$/;
-  const SERVER_COMMANDS = ["users", "kick", "block", "unblock", "blocks"];
+  const SERVER_COMMANDS = ["users", "kick", "block", "unblock", "blocks", "announce", "rooms"];
 
   const $ = (id) => document.getElementById(id);
   const chatBox = $("mpChat"), logEl = $("mpLog"), inputEl = $("mpInput");
@@ -3692,6 +3618,7 @@ document.addEventListener("keydown", e => {
       ":disconnect — go offline\n" +
       ":users — see who is here\n" +
       "Room owner only: :kick <name>  :block <name>  :unblock <name>  :blocks\n" +
+      "Admins: :announce <message> (to everyone)  :rooms (list rooms; :room <code> joins any room, even blocked/full)\n" +
       ":cls — clear this chat window");
   }
 
@@ -3939,6 +3866,10 @@ canvas.style.height = displayH + "px";
       case "sys":
         return addLine(m.level === "error" ? "error" : "system", m.text);
 
+      case "announce":
+        openChat();
+        return addLine("announce", m.text, "📢 Server" + (m.from ? ` (${m.from})` : ""));
+
       case "chat":
         return addLine("chat", m.text, m.from, { owner: m.owner, admin: m.admin, mine: S.me && m.id === S.me.id });
 
@@ -4183,6 +4114,8 @@ canvas.style.height = displayH + "px";
     c.restore();
   };
 
+  window.__mpCommand = (text) => { openChat(); handleInput(text); };   // used by the admin menu to join rooms
+
   window.addEventListener("beforeunload", () => { try { if (S.ws) S.ws.close(); } catch {} });
 
   addLine("system", "Multiplayer: type :connect to join the public lobby, or :room <code> for a private room. :help lists everything.");
@@ -4332,6 +4265,8 @@ canvas.style.height = displayH + "px";
     const tabs = [
       ["players", "Players"],
       ["bans",    "Bans"],
+      ["rooms",   "Rooms"],
+      ["announce","Announce"],
       ["logs",    "Chat log"],
       ["inbox",   "Owner inbox"],
       ["credits", "Credits"],
@@ -4382,6 +4317,26 @@ canvas.style.height = displayH + "px";
         refreshState();
       } catch (e){ msg(e.message, "err"); }
     }
+    async function banAccount(name){
+      const why = prompt(`Ban account "${name}"? Reason (optional):`, "Rule violation");
+      if (why === null) return;
+      const hrs = prompt("For how many hours? (0 = permanent)", "0");
+      if (hrs === null) return;
+      const minutes = Math.round(Number(hrs) * 60);
+      if (!Number.isFinite(minutes) || minutes < 0 || minutes > 525600){ msg("Enter 0 to 8760 hours.", "err"); return; }
+      try {
+        const r = await api("/admin/ban-account", { username: name, minutes, reason: why });
+        msg(`Banned account ${name}. Logged out ${r.sessionsEnded} session(s), disconnected ${r.disconnected} connection(s).`, "ok");
+        if (activeTab === "accounts") render(); else refreshState();
+      } catch (e){ msg(e.message, "err"); }
+    }
+    async function unbanAccount(name){
+      try {
+        await api("/admin/unban-account", { username: name });
+        msg(`Unbanned account ${name}.`, "ok");
+        if (activeTab === "accounts") render(); else refreshState();
+      } catch (e){ msg(e.message, "err"); }
+    }
     async function unban(ip){
       try { await api("/admin/unban", { ip }); msg(`Unbanned ${ip}.`, "ok"); refreshState(); }
       catch (e){ msg(e.message, "err"); }
@@ -4423,6 +4378,7 @@ canvas.style.height = displayH + "px";
                 try { await api("/admin/kick", { id: p.id, reason: why }); msg(`Kicked ${p.name}.`, "ok"); refreshState(); }
                 catch (e){ msg(e.message, "err"); }
               } }, "Kick"), " ",
+              p.account ? el("button", { class: "danger", onclick: () => banAccount(p.account) }, "Ban acct") : "", " ",
               !p.ip ? "" : bannedIps.has(p.ip) ? el("span", { class: "admNote" }, "banned") : el("span", {},
                 el("button", { class: "danger", onclick: () => ban(p.ip, "multiplayer", p.name) }, "Ban multi"), " ",
                 el("button", { class: "danger", onclick: () => ban(p.ip, "game", p.name) }, "Ban game"))))),
@@ -4456,8 +4412,18 @@ canvas.style.height = displayH + "px";
     // ---- Tab: Bans ----
     if (activeTab === "bans"){
       const bansEl2 = el("div");
-      body.append(el("h3", {}, "Active bans"), bansEl2);
+      const acctBansEl = el("div");
+      body.append(el("h3", {}, "Banned accounts"), acctBansEl, el("h3", {}, "Banned IPs"), bansEl2);
       state.renderBansTab = (s) => {
+        acctBansEl.replaceChildren(table(
+          ["Account", "Until", "Reason", "By", ""],
+          (s.accountBans || []).map((b) => el("tr", {},
+            el("td", {}, b.username),
+            el("td", {}, b.expires ? new Date(b.expires).toLocaleString() : "Permanent"),
+            el("td", {}, b.reason || ""),
+            el("td", {}, b.by || ""),
+            el("td", { style: "text-align:right" }, el("button", { onclick: () => unbanAccount(b.username) }, "Unban")))),
+          "No banned accounts."));
         bansEl2.replaceChildren(table(
           ["IP", "Scope", "Until", "Reason", ""],
           s.bans.map((b) => el("tr", {},
@@ -4470,6 +4436,49 @@ canvas.style.height = displayH + "px";
       };
       body.append(el("div", { class: "admNote" },
         "IP bans are a blunt tool: people can change IP (VPN, mobile data), and everyone behind a shared IP (school, household) is affected too."));
+    }
+
+    // ---- Tab: Rooms ----
+    if (activeTab === "rooms"){
+      const roomsEl = el("div");
+      body.append(
+        el("h3", {}, "Rooms"),
+        el("div", { class: "admNote" }, "Admins can join any room, including blocked or full ones, and use :kick / :block there. Chat shows an [Admin] tag. Also: :rooms in chat."),
+        roomsEl);
+      state.renderRoomsTab = (s) => {
+        roomsEl.replaceChildren(table(
+          ["Room", "Owner", "Online", "Who", ""],
+          (s.rooms || []).map((r) => el("tr", {},
+            el("td", {}, r.kind === "lobby" ? "Public lobby" : r.code),
+            el("td", {}, r.owner || "—"),
+            el("td", {}, String(r.size) + (r.blocked ? ` (${r.blocked} blocked)` : "")),
+            el("td", {}, r.members.join(", ")),
+            el("td", { style: "text-align:right" }, el("button", { onclick: () => {
+              close();
+              window.__mpCommand(r.kind === "lobby" ? ":connect" : ":room " + r.code);
+            } }, "Join")))),
+          "There are no rooms right now."));
+      };
+    }
+
+    // ---- Tab: Announce ----
+    if (activeTab === "announce"){
+      const ta = el("textarea", { rows: 4, maxLength: 500, placeholder: "Message for everyone connected to multiplayer…",
+        style: "width:100%;box-sizing:border-box;background:#111;color:#fff;border:2px solid #555;padding:8px;font:inherit;resize:vertical" });
+      body.append(
+        el("h3", {}, "Server message"),
+        el("div", { class: "admNote" }, "Shown highlighted in the chat of every connected player, in every room (max 500 characters). In chat you can also type :announce <message>."),
+        ta,
+        el("div", { class: "admRow" }, el("button", { onclick: async () => {
+          const text = ta.value.trim();
+          if (!text){ msg("Write a message first.", "err"); return; }
+          if (!confirm(`Send this to every connected player?\n\n${text}`)) return;
+          try {
+            const r = await api("/admin/announce", { text });
+            msg(`Sent to ${r.delivered} player(s).`, "ok");
+            ta.value = "";
+          } catch (e){ msg(e.message, "err"); }
+        } }, "Send to everyone")));
     }
 
     // ---- Tab: Chat log ----
@@ -4562,9 +4571,9 @@ canvas.style.height = displayH + "px";
       );
       api("/admin/users").then((users) => {
         accountsEl.replaceChildren(table(
-          ["Account", "Role", "Created", ""],
+          ["Account", "Role", "Created", "", ""],
           users.map((u) => el("tr", {},
-            el("td", {}, u.username),
+            el("td", {}, u.username + (u.banned ? " (banned)" : "")),
             el("td", {}, u.role),
             el("td", {}, u.created ? new Date(u.created).toLocaleString() : "—"),
             el("td", {}, isOwnerAccount && u.role !== "owner"
@@ -4576,7 +4585,12 @@ canvas.style.height = displayH + "px";
                     } catch (e){ msg(e.message, "err"); }
                   }
                 }, u.role === "admin" ? "Remove admin" : "Grant admin")
-              : ""))),
+              : ""),
+            el("td", {}, u.role === "owner" || u.username === currentUser || (u.role === "admin" && !isOwnerAccount)
+              ? ""
+              : u.banned
+                ? el("button", { onclick: () => unbanAccount(u.username) }, "Unban")
+                : el("button", { class: "danger", onclick: () => banAccount(u.username) }, "Ban")))),
           "No accounts found."));
       }).catch((e) => { accountsEl.replaceChildren(el("div", { class: "admMsg err" }, e.message)); });
     }
@@ -4592,6 +4606,7 @@ canvas.style.height = displayH + "px";
           "If this isn't your real public IP, fix TRUSTED_PROXY_HOPS before banning anyone.";
         if (state.renderPlayers) state.renderPlayers(s);
         if (state.renderBansTab) state.renderBansTab(s);
+        if (state.renderRoomsTab) state.renderRoomsTab(s);
       } catch (e){
         msg(e.status === 401 || e.status === 403
           ? "Your admin login expired. Log out, then log in as Owner again."
