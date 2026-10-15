@@ -2110,6 +2110,10 @@ function update(){
 /* =====================================================================
    DRAW
    ===================================================================== */
+// Declare line-preview state before the first animation frame runs.
+// The render loop starts before the mouse handlers are registered below.
+let linePreview = null;
+let lineDragActive = false;
 let mouseX = 0, mouseY = 0;
 
 function draw(){
@@ -2124,6 +2128,25 @@ function draw(){
       ctx.fillStyle = el.color(p);
       ctx.fillRect(x * SIZE, y * SIZE, SIZE, SIZE);
     }
+  }
+
+  // Live straight-line preview while Shift-dragging.
+  if (linePreview) {
+    const pts = lineStamps(linePreview.x0, linePreview.y0, linePreview.x1, linePreview.y1, brushSize);
+    const previewColor = elements[currentElement]?.color
+      ? elements[currentElement].color(createPixel(currentElement))
+      : "#ffffff";
+    ctx.save();
+    ctx.globalAlpha = 0.58;
+    ctx.fillStyle = previewColor;
+    for (const [x, y] of pts) {
+      for (let dy = 0; dy < brushSize; dy++) {
+        for (let dx = 0; dx < brushSize; dx++) {
+          ctx.fillRect((x + dx) * SIZE, (y + dy) * SIZE, SIZE, SIZE);
+        }
+      }
+    }
+    ctx.restore();
   }
 
   // Brush outline (crisp, no anti-aliasing).
@@ -2173,16 +2196,63 @@ canvas.addEventListener("mousemove", e => {
   }
 });
 
+// Hold Shift + left mouse button and drag to preview a straight line.
+// Releasing the mouse places the line; the simulation is unchanged while previewing.
+function canvasGridPosition(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = rect.width ? canvas.width / rect.width : 1;
+  const sy = rect.height ? canvas.height / rect.height : 1;
+  return [
+    Math.max(0, Math.min(WIDTH - 1, Math.floor((e.clientX - rect.left) * sx / SIZE))),
+    Math.max(0, Math.min(HEIGHT - 1, Math.floor((e.clientY - rect.top) * sy / SIZE)))
+  ];
+}
+
 canvas.addEventListener("mousedown", e => {
+  if (e.button === 0 && e.shiftKey) {
+    e.preventDefault();
+    const [x, y] = canvasGridPosition(e);
+    lineDragActive = true;
+    linePreview = { x0: x, y0: y, x1: x, y1: y };
+    mouseDownLeft = false;
+    moveTrail.length = 0;
+    strokeLast.left = null;
+    return;
+  }
+
   if (e.button === 0) mouseDownLeft = true;
   if (e.button === 2) mouseDownRight = true;
 });
+
+canvas.addEventListener("mousemove", e => {
+  if (!lineDragActive || !linePreview) return;
+  const [x, y] = canvasGridPosition(e);
+  linePreview.x1 = x;
+  linePreview.y1 = y;
+});
+
+function finishLineDrag() {
+  if (!lineDragActive || !linePreview) return;
+  const line = linePreview;
+  lineDragActive = false;
+  linePreview = null;
+  strokePaint(line.x0, line.y0, line.x1, line.y1);
+  moveTrail.length = 0;
+  strokeLast.left = null;
+}
+
 canvas.addEventListener("mouseup", e => {
-  if (e.button === 0) mouseDownLeft = false;
+  if (e.button === 0) {
+    if (lineDragActive) finishLineDrag();
+    mouseDownLeft = false;
+  }
   if (e.button === 2) mouseDownRight = false;
 });
 window.addEventListener("mouseup", e => {
-  if (e.button === 0) mouseDownLeft = false;
+  if (e.button === 0) {
+    if (lineDragActive) finishLineDrag();
+    mouseDownLeft = false;
+  }
   if (e.button === 2) mouseDownRight = false;
 });
 
@@ -2495,6 +2565,9 @@ const typeMap = {
   liquidHydrogen:33, metal:34
 };
 const revTypeMap = Object.fromEntries(Object.entries(typeMap).map(([k, v]) => [v, k]));
+// Expose save-format maps for optional elements registered by later script blocks.
+window.typeMap = typeMap;
+window.revTypeMap = revTypeMap;
 
 function compressGrid(g){
   return g.map(row => row.map(p => ({
@@ -3371,7 +3444,12 @@ for (const [n, [c, d]] of Object.entries(gateInfo))
 /* Save-format ids for the new elements (continues after metal = 34). */
 ["gas","salt","saltwater","gunpowder","snow","mercury","honey","alcohol","wire","battery","switch","lamp",
  "heater","cooler","igniter","fuse","capacitor","clock","diode","not","and","or","nand","xor"]
-  .forEach((n, i) => { typeMap[n] = 35 + i; revTypeMap[35 + i] = n; });
+  .forEach((n, i) => {
+    if (!window.typeMap) window.typeMap = {};
+    if (!window.revTypeMap) window.revTypeMap = {};
+    window.typeMap[n] = 35 + i;
+    window.revTypeMap[35 + i] = n;
+  });
 
 /* T flips switches under the brush. */
 document.addEventListener("keydown", e => {
