@@ -407,6 +407,237 @@ html, body{ font-family:var(--px-font); font-size:17px; line-height:1.2; letter-
 #ui #propTitle{ color:var(--sel,var(--ui-accent)); }
 #elementUI{ box-shadow:0 0 0 3px var(--ol), inset 0 0 0 3px var(--sel,var(--panel2)); }
 #info,#description{ box-shadow: inset 10px 0 0 var(--sw,transparent), 0 0 0 3px var(--ol); padding-left:20px; }
+
+/* =====================================================================
+   THIN BOTTOM BAR + SETTINGS POPUP + INFO CORNER
+   ===================================================================== */
+:root{ --bar-h:60px; --side-w:152px; }
+html, body{ overflow:hidden; }
+body{ flex-direction:column !important; }
+#main{ order:1; flex:1 1 0; min-height:0; min-width:0; display:flex; flex-direction:row; }
+#main canvas{ flex:1 1 0; min-width:0; min-height:0; width:auto; height:auto; }
+
+#ui{
+  order:2;
+  width:100% !important; min-width:0 !important; max-width:none;
+  height:var(--bar-h) !important; min-height:var(--bar-h); max-height:var(--bar-h) !important;
+  flex:0 0 var(--bar-h) !important;
+  padding:0 !important; overflow:visible !important;
+  background:var(--panel) !important;
+  border:0 !important;
+  box-shadow: inset 0 3px 0 var(--ol), inset 0 6px 0 var(--panel2) !important;
+}
+#bar{
+  height:100%; display:flex; align-items:center; gap:12px;
+  padding:6px 12px 0; min-width:0;
+}
+#ui #bar button{
+  width:auto; margin:0; flex:0 0 auto; text-align:center; white-space:nowrap;
+  padding:3px 12px; font-size:17px; line-height:1.1;
+}
+#ui #bar .barSpacer{ flex:1 1 auto; min-width:0; }
+#ui #bar #brushWrap{
+  display:flex; align-items:center; gap:8px; margin:0; flex:0 1 190px; min-width:90px; color:var(--muted);
+}
+#ui #bar #brushWrap span{ flex:0 0 auto; }
+#ui #bar #brushSize{ margin:0; width:100%; min-width:50px; flex:1 1 auto; }
+#ui #bar #settingsBtn[aria-expanded="true"]{ background:var(--btn-hi); box-shadow: inset 0 0 0 3px var(--ui-accent), 0 0 0 3px var(--ol); }
+#elemChip{ display:flex; align-items:center; gap:8px; flex:0 0 auto; max-width:170px; padding:3px 10px; font-size:17px; line-height:1.1;
+  background:var(--panel3); box-shadow:inset 0 0 0 2px var(--panel2), 0 0 0 3px var(--ol); }
+#elemSwatch{ width:14px; height:14px; flex:0 0 auto; background:var(--sel, var(--ui-accent)); box-shadow:0 0 0 2px var(--ol); }
+#elemChipName{ overflow:hidden; text-overflow:ellipsis; }
+#ui #bar #versionLabel{
+  position:static !important; flex:0 0 auto; pointer-events:none;
+  font-size:15px; color:var(--muted); background:none; padding:0; box-shadow:none;
+}
+
+#settingsPanel{
+  position:fixed; left:calc(var(--side-w) + 12px); bottom:calc(var(--bar-h) + 10px);
+  width:min(480px, calc(100vw - var(--side-w) - 24px));
+  height:min(440px, calc(100vh - var(--bar-h) - 24px));
+  z-index:20000; display:none; flex-direction:column;
+  background:var(--panel); color:var(--txt);
+  box-shadow:0 0 0 4px var(--ol), inset 0 0 0 4px var(--panel2);
+  padding:4px;
+}
+#settingsPanel.open{ display:flex; }
+#spHead{ flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 10px 6px 10px; }
+#spTabs{ display:flex; gap:8px; flex:1 1 auto; min-width:0; flex-wrap:wrap; }
+#ui #spHead button{ width:auto; margin:0; padding:4px 12px; text-align:center; }
+#ui #spHead .spTab.active{ background:var(--btn-hi); box-shadow: inset 0 0 0 3px var(--ui-accent), 0 0 0 3px var(--ol); color:var(--ui-accent); }
+#ui #spHead #spClose{ flex:0 0 auto; padding:4px 10px; }
+#spBody{ flex:1 1 auto; min-height:0; padding:8px 12px 12px; }
+.spPane{ display:none; height:100%; overflow-y:auto; overflow-x:hidden; padding:4px 6px 4px 4px; }
+.spPane.active{ display:block; }
+#paneTools #toolsPanel{ margin:3px 3px 10px; }
+#paneTools > h3{ margin-top:6px !important; }
+#paneTools #lineHint{ margin:6px 3px 8px; }
+
+.menuGrid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:3px 6px 6px 3px; align-content:start; }
+#ui .menuGrid > button{ margin:0 !important; width:100%; text-align:center; min-width:0; padding:8px 6px; }
+.menuGrid > #authSection{ grid-column:1 / -1; display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+#ui .menuGrid > #authSection button{ width:auto; margin:0 !important; }
+.menuGrid > #authSection #userStatus{ flex:1 1 100%; margin:0; }
+
+#infoCorner{
+  position:fixed; top:12px; right:12px; z-index:9000;
+  width:min(260px, calc(100vw - 24px));
+  background:rgba(14,14,14,.88);
+  box-shadow:0 0 0 3px var(--ol), inset 0 0 0 3px var(--panel2);
+  padding:9px; display:flex; flex-direction:column; gap:6px;
+  pointer-events:none;
+}
+#infoCorner #info, #infoCorner #description, #infoCorner #statusBox{
+  margin:0; padding:5px 8px; font-size:16px; line-height:1.15; min-height:0;
+  background:var(--panel3); box-shadow:inset 0 0 0 2px var(--ol); overflow-wrap:anywhere;
+}
+#infoCorner #info, #infoCorner #description{ box-shadow: inset 8px 0 0 var(--sw, transparent), inset 0 0 0 2px var(--ol); padding-left:16px; }
+#infoCorner #statusBox{ color:var(--muted); font-size:15px; }
+
+#publicSavesModal, #saveManager, #commentsModal{
+  position:fixed !important; top:12px !important; left:calc(var(--side-w) + 12px) !important; right:auto !important;
+  width:min(440px, calc(100vw - var(--side-w) - 24px)) !important;
+  height:calc(100vh - var(--bar-h) - 28px) !important; max-height:none; min-height:240px;
+}
+#commentsModal{ left:auto !important; right:12px !important; }
+#commentsList{ height:calc(100% - 150px) !important; min-height:100px; }
+
+#mpChat{
+  left:auto !important; right:12px !important; top:auto;
+  bottom:calc(var(--bar-h) + 12px) !important;
+  width:400px; max-width:calc(100vw - 24px) !important;
+}
+#mpLog{ height:min(180px, calc(100vh - var(--bar-h) - 150px)); }
+
+@media (max-width:720px){
+  :root{ --bar-h:46px; }
+  body{ flex-direction:column !important; }
+  #ui{ height:var(--bar-h) !important; width:100% !important; }
+  #bar{ gap:8px; padding:6px 8px 0; }
+  #ui #bar button{ padding:3px 8px; }
+  #ui #bar #versionLabel{ display:none; }
+  #brushWrap span{ display:none; }
+  #ui #bar #elemChip{ max-width:120px; }
+  #settingsPanel{ left:8px; width:calc(100vw - 16px); }
+  #infoCorner{ top:8px; right:8px; width:min(210px, calc(100vw - 16px)); }
+  #infoCorner #description{ display:none; }
+  #mpChat{ right:8px !important; width:calc(100vw - 16px) !important; bottom:calc(var(--bar-h) + 8px) !important; }
+  #publicSavesModal, #saveManager, #commentsModal{
+    left:8px !important; right:auto !important; top:8px !important;
+    width:calc(100vw - 16px) !important; height:calc(100vh - var(--bar-h) - 20px) !important;
+  }
+}
+@media (max-width:520px){
+  #elemChip{ display:none; }
+}
+@media (max-width:420px){
+  #ui #bar #elemChipName{ display:none; }
+}
+
+/* ---- category bar (left side) ---- */
+#catBar{
+  flex:0 0 var(--side-w); width:var(--side-w); height:100%;
+  overflow-y:auto; overflow-x:hidden;
+  padding:14px 14px 14px 12px;
+  background:var(--panel);
+  box-shadow: inset -3px 0 0 var(--ol), inset -6px 0 0 var(--panel2);
+}
+#catBar #elementTabs{
+  width:100% !important; height:auto !important; border:0 !important; background:transparent !important;
+  overflow:visible !important; display:flex; flex-direction:column; gap:10px;
+}
+#catBar #elementTabs button{
+  display:block; width:100%; margin:0; padding:8px 8px; text-align:left;
+  font-family:var(--px-font); font-size:17px; line-height:1.1; border:0; cursor:pointer;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* ---- element strip (in the bottom bar) ---- */
+#elemStrip{ flex:1 1 auto; min-width:0; height:100%; display:flex; align-items:center; gap:8px; }
+#ui #bar #elements{
+  flex:1 1 auto; min-width:0; height:100%; margin:0; padding:0 10px;
+  display:flex; align-items:center; gap:10px;
+  overflow-x:auto; overflow-y:hidden; scrollbar-width:none;
+}
+#elements::-webkit-scrollbar{ display:none; }
+#ui #bar #elements button{
+  width:auto !important; margin:0 !important; flex:0 0 auto;
+  padding:3px 11px; font-size:17px; line-height:1.1; white-space:nowrap;
+}
+#ui #bar #stripPrev, #ui #bar #stripNext{ padding:3px 9px; }
+#ui #bar #stripPrev:disabled, #ui #bar #stripNext:disabled{ opacity:.35; cursor:default; }
+#ui #bar #versionLabel{ display:none; }
+@media (min-width:1100px){ #ui #bar #versionLabel{ display:block; } }
+#ui #bar #brushWrap{ flex:0 0 150px; min-width:90px; }
+
+@media (max-width:720px){
+  :root{ --bar-h:56px; --side-w:126px; }
+  #catBar{ padding:12px 10px 12px 8px; }
+  #catBar #elementTabs button{ font-size:14px; padding:7px 5px; }
+  #elemChip #elemChipName{ display:none; }
+  #elemChip{ padding:3px 8px; }
+  #ui #bar #brushWrap{ flex:0 0 70px; min-width:50px; }
+  #mpChat{ left:calc(var(--side-w) + 8px) !important; right:8px !important; width:auto !important; max-width:none !important; }
+  #ui #bar #stripPrev, #ui #bar #stripNext{ display:none; }
+  #settingsPanel{ left:calc(var(--side-w) + 8px); width:calc(100vw - var(--side-w) - 16px); }
+  #publicSavesModal, #saveManager, #commentsModal{
+    left:calc(var(--side-w) + 8px) !important; width:calc(100vw - var(--side-w) - 16px) !important;
+  }
+}
+
+/* ---- login / register popup ---- */
+#authPopup{
+  position:fixed; left:12px; bottom:calc(var(--bar-h) + 10px);
+  width:min(300px, calc(100vw - 16px)); box-sizing:border-box;
+  z-index:20001; display:none; flex-direction:column; gap:10px; padding:16px;
+  background:var(--panel); color:var(--txt);
+  box-shadow:0 0 0 4px var(--ol), inset 0 0 0 4px var(--panel2);
+}
+#authPopup.open{ display:flex; }
+#authTitle{ font-size:18px; color:var(--ui-accent); }
+#authForm{ display:flex; flex-direction:column; gap:4px; }
+#ui #authPopup input[type=text], #ui #authPopup input[type=password]{
+  font-family:var(--px-font); font-size:17px; color:var(--txt); background:var(--ol) !important;
+  border:0 !important; box-shadow: inset 3px 3px 0 #000, 0 0 0 3px var(--panel2);
+  padding:6px 8px; margin:3px 3px 8px; width:calc(100% - 6px); box-sizing:border-box;
+}
+#ui #authPopup input:focus{ outline:3px solid var(--ui-accent); outline-offset:1px; }
+#authBtns{ display:flex; gap:10px; padding:0 3px; }
+#ui #authPopup #authBtns button{ flex:1 1 0; margin:0; width:auto; text-align:center; padding:6px 8px; }
+#ui #authPopup #logoutBtn{ width:100%; margin:0; text-align:center; padding:6px 8px; }
+#authMsg{ min-height:18px; font-size:15px; color:var(--muted); line-height:1.15; }
+#authMsg.err{ color:#ff7070; }
+#authMsg.ok{ color:#88ffaa; }
+#authPopup #userStatus{ margin:0; }
+#ui #bar #loginBtn{ max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+#ui #bar #loginBtn[aria-expanded="true"]{ background:var(--btn-hi); box-shadow: inset 0 0 0 3px var(--ui-accent), 0 0 0 3px var(--ol); }
+.barBreak{ display:none; }
+
+/* version label only when there is lots of room */
+#ui #bar #versionLabel{ display:none; }
+@media (min-width:1500px){ #ui #bar #versionLabel{ display:block; } }
+
+/* ---- two-row bar for narrower windows: buttons on top, elements underneath ---- */
+@media (max-width:1280px){
+  :root{ --bar-h:106px; }
+  #bar{ flex-wrap:wrap; align-content:flex-start; row-gap:6px; padding:10px 12px 0; }
+  .barBreak{ display:block; order:3; flex:0 0 100%; height:0; }
+  #ui #bar #pauseBtn{ order:1; margin-left:auto; }
+  #ui #bar #clearBtn{ order:2; }
+  #elemChip{ order:4; }
+  #elemStrip{ order:5; flex:1 1 0; height:54px; }
+  #ui #bar #brushWrap{ order:6; }
+}
+@media (max-width:720px){
+  #bar{ padding:10px 8px 0; column-gap:6px; }
+  #ui #bar button{ padding:3px 9px; }
+}
+@media (max-width:620px){ .lbl2{ display:none; } }
+@media (max-width:480px){
+  #ui #bar button{ padding:3px 5px; font-size:14px; }
+  #bar{ column-gap:4px; padding-left:6px; padding-right:6px; }
+  #ui #bar #loginBtn{ max-width:80px; }
+}
 </style>
 </head>
 <body>
@@ -465,21 +696,92 @@ html, body{ font-family:var(--px-font); font-size:17px; line-height:1.2; letter-
   </div>
 </div>
 
-<div id="versionLabel">v2.0.0</div>
-
 <div id="ui">
 
-  <div id="authSection">
-    <button id="loginBtn">Login</button>
-    <button id="registerBtn">Register</button>
-    <button id="logoutBtn" style="display:none;">Logout</button>
-    <span id="userStatus">Not logged in</span>
+  <!-- ===== thin bottom bar ===== -->
+  <div id="bar">
+    <button id="settingsBtn" type="button" aria-expanded="false" aria-controls="settingsPanel">Settings</button>
+    <button id="loginBtn" type="button" aria-expanded="false" aria-controls="authPopup" title="Login or register">Login</button>
+    <button id="reloadSaveBtn" type="button" title="Reload your last loaded save">Reload<span class="lbl2"> Save</span></button>
+    <button id="browsePublicBtn" type="button" title="Browse public saves">Browse<span class="lbl2"> Saves</span></button>
+    <span class="barBreak"></span>
+    <span id="elemChip" title="Selected element"><span id="elemSwatch"></span><span id="elemChipName">sand</span></span>
+    <div id="elemStrip">
+      <button id="stripPrev" type="button" aria-label="Scroll elements left">&lt;</button>
+      <div id="elements"></div>
+      <button id="stripNext" type="button" aria-label="Scroll elements right">&gt;</button>
+    </div>
+    <label id="brushWrap" title="Brush size ( [ and ] keys ) · Shift+drag = straight line · right button erases · Esc cancels">
+      <span>Brush</span>
+      <input type="range" id="brushSize" min="1" max="50" value="1">
+    </label>
+    <button id="pauseBtn" type="button">Pause</button>
+    <button id="clearBtn" type="button">Clear</button>
+    <span id="versionLabel">v2.0.0</span>
   </div>
 
-  <button id="browsePublicBtn">Browse Public Saves</button>
-  <button id="mpOpenBtn">Multiplayer Chat</button>
-  <button id="contactOwnerBtn">Message the owner</button>
-  <button id="creditsBtn" type="button">Credits</button>
+  <!-- ===== settings popup ===== -->
+  <div id="settingsPanel" role="dialog" aria-label="Settings">
+    <div id="spHead">
+      <div id="spTabs">
+        <button type="button" class="spTab active" data-pane="paneTools">Tools</button>
+        <button type="button" class="spTab" data-pane="paneMenu">Menu</button>
+      </div>
+      <button type="button" id="spClose" title="Close settings">X</button>
+    </div>
+
+    <div id="spBody">
+      <div class="spPane active" id="paneTools">
+        <div id="toolsPanel">
+          <label>Border mode</label>
+          <select id="borderMode">
+            <option value="solid">Solid (walls)</option>
+            <option value="void">Void (drain)</option>
+            <option value="loop">Loop (wrap)</option>
+          </select>
+
+          <label><input type="checkbox" id="ambientHeat" style="width:auto;"> Ambient heat</label>
+          <div style="color:#8fa; font-size:10px; margin-bottom:6px;">Heat exchanges with the surroundings at the air temperature: air resets fast, exposed surfaces cool/warm faster than buried ones. Off = closed system.</div>
+
+          <h4 id="propTitle">Properties: sand</h4>
+          <div id="propEditor"></div>
+          <button id="resetPropsBtn" style="margin-top:6px;">Reset this element's properties</button>
+        </div>
+
+        <h3>Air Temperature (&deg;C)</h3>
+        <input type="number" id="airTempInput" value="20">
+        <button id="applyAirTempBtn">Update Air Temperature</button>
+
+        <div id="lineHint">Hold Shift and drag for a straight line (right button erases). Esc cancels.</div>
+      </div>
+
+      <div class="spPane" id="paneMenu">
+        <div class="menuGrid">
+          <button id="mpOpenBtn">Multiplayer Chat</button>
+          <button id="contactOwnerBtn">Message the owner</button>
+          <button id="creditsBtn" type="button">Credits</button>
+          <button id="saveBtn">Save Grid</button>
+          <button id="manageSavesBtn">Manage Saves</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== login / register popup ===== -->
+  <div id="authPopup" role="dialog" aria-label="Account">
+    <div id="authTitle">Account</div>
+    <div id="authForm">
+      <input id="authUser" type="text" placeholder="Username" autocomplete="username" spellcheck="false">
+      <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
+      <div id="authBtns">
+        <button id="authSubmitBtn" type="button">Login</button>
+        <button id="registerBtn" type="button">Register</button>
+      </div>
+    </div>
+    <div id="authMsg" aria-live="polite"></div>
+    <span id="userStatus">Not logged in</span>
+    <button id="logoutBtn" type="button" style="display:none;">Logout</button>
+  </div>
 
   <div id="publicSavesModal" class="modal">
     <h3>Public Saves</h3>
@@ -488,61 +790,27 @@ html, body{ font-family:var(--px-font); font-size:17px; line-height:1.2; letter-
     <button id="closePublicBtn" style="margin-top:8px;">Close</button>
   </div>
 
-  <button id="saveBtn">Save Grid</button>
-  <button id="manageSavesBtn">Manage Saves</button>
-
   <div id="saveManager" class="modal">
     <h3>Saved Grids</h3>
     <div id="savesList"></div>
     <button id="closeSaveManager" style="margin-top:8px;">Close</button>
   </div>
 
-  <h2>Elements</h2>
-  <div id="elementUI">
-    <div id="elementTabs"></div>
-    <div id="elementPanel"><div id="elements"></div></div>
-  </div>
-
-  <h2>Tools</h2>
-  <div id="toolsPanel">
-    <label>Border mode</label>
-    <select id="borderMode">
-      <option value="solid">Solid (walls)</option>
-      <option value="void">Void (drain)</option>
-      <option value="loop">Loop (wrap)</option>
-    </select>
-
-    <label><input type="checkbox" id="ambientHeat" style="width:auto;"> Ambient heat</label>
-    <div style="color:#8fa; font-size:10px; margin-bottom:6px;">Heat exchanges with the surroundings at the air temperature: air resets fast, exposed surfaces cool/warm faster than buried ones. Off = closed system.</div>
-
-    <h4 id="propTitle">Properties: sand</h4>
-    <div id="propEditor"></div>
-    <button id="resetPropsBtn" style="margin-top:6px;">Reset this element's properties</button>
-  </div>
-
-  <h3>Brush Size</h3>
-  <input type="range" id="brushSize" min="1" max="50" value="1">
-  <div id="lineHint">Hold Shift and drag for a straight line (right button erases). Esc cancels.</div>
-
-  <h3>Air Temperature (°C)</h3>
-  <input type="number" id="airTempInput" value="20">
-  <button id="applyAirTempBtn">Update Air Temperature</button>
-
-  <button id="clearBtn">Clear Screen</button>
-  <button id="pauseBtn">Pause</button>
-
-  <h3>Info</h3>
-  <div id="info">Hover pixel</div>
-
-  <h3>Description</h3>
-  <div id="description">No description</div>
-
-  <h3>Status</h3>
-  <div id="statusBox">Replace Mode: OFF</div>
-
 </div>
 
-<canvas id="canvas"></canvas>
+<!-- ===== info corner (top-right, never blocks drawing) ===== -->
+<div id="infoCorner" aria-live="polite">
+  <div id="info">Hover pixel</div>
+  <div id="description">No description</div>
+  <div id="statusBox">Replace Mode: OFF</div>
+</div>
+
+<div id="main">
+  <aside id="catBar" aria-label="Element categories">
+    <div id="elementTabs"></div>
+  </aside>
+  <canvas id="canvas"></canvas>
+</div>
 
 <div id="mpChat" class="collapsed">
   <div id="mpHeader">
@@ -727,9 +995,10 @@ function resizeCanvas(){
   canvas.style.flex = canvas.style.alignSelf = canvas.style.width = canvas.style.height = "";
   canvas.style.marginLeft = canvas.style.marginRight = "";
   const uiRect = document.getElementById("ui").getBoundingClientRect();
-  const stacked = window.innerWidth <= 720;
-  const availableWidth  = stacked ? window.innerWidth : window.innerWidth - uiRect.width;
-  const availableHeight = stacked ? window.innerHeight - uiRect.height : window.innerHeight;
+  // The thin UI bar sits at the bottom: canvas gets full width and the height above the bar.
+  const sideRect = document.getElementById("catBar").getBoundingClientRect();
+  const availableWidth  = Math.max(1, window.innerWidth - sideRect.width);
+  const availableHeight = Math.max(1, window.innerHeight - uiRect.height);
   WIDTH  = Math.max(20, Math.floor(availableWidth  / SIZE));
   HEIGHT = Math.max(20, Math.floor(availableHeight / SIZE));
   canvas.width  = WIDTH  * SIZE;
@@ -2601,45 +2870,88 @@ let authToken = null;
 let isOwnerAccount = false;
 let isAdminAccount = false;
 
+const authPopup = document.getElementById("authPopup");
+const authUserInput = document.getElementById("authUser");
+const authPassInput = document.getElementById("authPass");
+const authMsgEl = document.getElementById("authMsg");
+
+function authMessage(text, kind){
+  authMsgEl.textContent = text || "";
+  authMsgEl.className = kind || "";
+}
+function setAuthOpen(open){
+  const btn = document.getElementById("loginBtn");
+  if (open){
+    if (window.__closeSettings) window.__closeSettings();
+    const w = authPopup.offsetWidth || 300;
+    // pull the popup out from above the Login button
+    authPopup.style.left = Math.max(8, Math.min(btn.getBoundingClientRect().left, window.innerWidth - w - 8)) + "px";
+  }
+  authPopup.classList.toggle("open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open){
+    authMessage("");
+    if (!currentUser) authUserInput.focus();
+  }
+}
+window.__closeAuth = () => setAuthOpen(false);
+
 function updateAuthUI(){
-  document.getElementById("loginBtn").style.display = currentUser ? "none" : "inline-block";
-  document.getElementById("registerBtn").style.display = currentUser ? "none" : "inline-block";
-  document.getElementById("logoutBtn").style.display = currentUser ? "inline-block" : "none";
+  const btn = document.getElementById("loginBtn");
+  btn.textContent = currentUser ? currentUser : "Login";
+  btn.title = currentUser ? "Account" : "Login or register";
+  document.getElementById("authForm").style.display = currentUser ? "none" : "";
+  document.getElementById("logoutBtn").style.display = currentUser ? "" : "none";
+  document.getElementById("authTitle").textContent = currentUser ? "Account" : "Login / Register";
   document.getElementById("userStatus").innerText = currentUser
     ? `Logged in as ${currentUser}${isAdminAccount ? " (admin: Ctrl+A)" : ""}`
     : "Not logged in";
 }
 
-document.getElementById("loginBtn").onclick = () => {
-  const username = prompt("Enter username:");
-  if (username === null) return;
-  const password = prompt("Enter password:");
-  if (password === null) return;
-  fetch(`${SERVER_URL}/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  }).then(res => res.json())
-    .then(data => {
-      if (data.token){
-        authToken = data.token;
-        currentUser = data.username || username;
-        isOwnerAccount = !!data.owner;
-        isAdminAccount = !!data.admin;
-        updateAuthUI();
-        renderSaves();
-      } else {
-        alert(data.error || "Login failed");
-      }
-    })
-    .catch(() => alert("Could not reach the server."));
-};
+document.getElementById("loginBtn").onclick = () => setAuthOpen(!authPopup.classList.contains("open"));
 
-document.getElementById("registerBtn").onclick = async () => {
-  const username = prompt("Choose username:");
-  if (username === null) return;
-  const password = prompt("Choose password:");
-  if (password === null) return;
+// click anywhere outside the popup (e.g. the canvas) tucks it away
+document.addEventListener("pointerdown", e => {
+  if (!authPopup.classList.contains("open")) return;
+  if (authPopup.contains(e.target) || e.target.closest("#loginBtn")) return;
+  setAuthOpen(false);
+});
+
+async function doLogin(){
+  const username = authUserInput.value.trim();
+  const password = authPassInput.value;
+  if (!username || !password){ authMessage("Enter a username and password.", "err"); return; }
+  authMessage("Logging in...");
+  try {
+    const res = await fetch(`${SERVER_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.token){
+      authToken = data.token;
+      currentUser = data.username || username;
+      isOwnerAccount = !!data.owner;
+      isAdminAccount = !!data.admin;
+      authPassInput.value = "";
+      authMessage("");
+      updateAuthUI();
+      renderSaves();
+      setAuthOpen(false);
+    } else {
+      authMessage(data.error || "Login failed", "err");
+    }
+  } catch {
+    authMessage("Could not reach the server.", "err");
+  }
+}
+
+async function doRegister(){
+  const username = authUserInput.value.trim();
+  const password = authPassInput.value;
+  if (!username || !password){ authMessage("Choose a username and password.", "err"); return; }
+  authMessage("Registering...");
 
   const attempt = async (claim) => {
     const res = await fetch(`${SERVER_URL}/register`, {
@@ -2653,20 +2965,30 @@ document.getElementById("registerBtn").onclick = async () => {
     let data = await attempt();
     if (data.needsClaim){
       const claim = prompt((data.error || "") + "\n\nEnter the one-time claim code from your server logs:");
-      if (claim === null) return;
+      if (claim === null){ authMessage(""); return; }
       data = await attempt(claim);
     }
-    alert(data.success ? "Registered! You can now login." : (data.error || "Registration failed"));
+    if (data.success){
+      authMessage("Registered! You can now login.", "ok");
+    } else {
+      authMessage(data.error || "Registration failed", "err");
+    }
   } catch {
-    alert("Registration failed: could not reach the server.");
+    authMessage("Registration failed: could not reach the server.", "err");
   }
-};
+}
+
+document.getElementById("authSubmitBtn").onclick = doLogin;
+document.getElementById("registerBtn").onclick = doRegister;
+[authUserInput, authPassInput].forEach(inp =>
+  inp.addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); doLogin(); } }));
 
 document.getElementById("logoutBtn").onclick = () => {
   if (authToken) fetch(`${SERVER_URL}/logout`, { method: "POST", headers: { "Authorization": authToken } }).catch(() => {});
   currentUser = null; authToken = null; isOwnerAccount = false; isAdminAccount = false;
   updateAuthUI();
   renderSaves();
+  authMessage("");
 };
 
 async function loadSaves(){
@@ -2676,6 +2998,14 @@ async function loadSaves(){
     return await res.json();
   }
   return JSON.parse(localStorage.getItem("pixelSandboxSaves") || "[]");
+}
+
+const LAST_SAVE_KEY = "pixelSandboxLastSaveRef";
+function setLastSaveRef(save){
+  try { localStorage.setItem(LAST_SAVE_KEY, JSON.stringify({ id: save.id ?? null, name: save.name })); } catch {}
+}
+function getLastSaveRef(){
+  try { return JSON.parse(localStorage.getItem(LAST_SAVE_KEY) || "null"); } catch { return null; }
 }
 
 async function saveCurrentGrid(name){
@@ -2693,6 +3023,7 @@ async function saveCurrentGrid(name){
     saves.push({ name, data: compressGrid(rawGrid) });
     localStorage.setItem("pixelSandboxSaves", JSON.stringify(saves));
   }
+  setLastSaveRef({ name });
   await renderSaves();
 }
 
@@ -2717,7 +3048,7 @@ async function renderSaves(){
     const thumb = generateThumbnail(decompressGrid(save.data));
     thumb.style.cursor = "pointer";
     thumb.style.imageRendering = "pixelated";
-    thumb.onclick = () => { loadSaveData(save.data); saveManager.style.display = "none"; };
+    thumb.onclick = () => { setLastSaveRef(save); loadSaveData(save.data); saveManager.style.display = "none"; };
     saveDiv.appendChild(thumb);
 
     const nameLabel = document.createElement("span");
@@ -2759,6 +3090,28 @@ document.getElementById("manageSavesBtn").onclick = () => {
   renderSaves();
 };
 document.getElementById("closeSaveManager").onclick = () => { saveManager.style.display = "none"; };
+
+/* Reload Save: does exactly what clicking a save's thumbnail in Manage Saves does,
+   for the save you most recently loaded (or saved). With none yet, it opens Manage Saves. */
+document.getElementById("reloadSaveBtn").onclick = async () => {
+  if (window.__closeAuth) window.__closeAuth();
+  if (window.__closeSettings) window.__closeSettings();
+  const ref = getLastSaveRef();
+  if (!ref){ document.getElementById("manageSavesBtn").click(); return; }
+  let saves = [];
+  try { saves = await loadSaves(); }
+  catch (e){ alert(e.message); return; }
+  let save = null;
+  if (ref.id !== null && ref.id !== undefined) save = saves.find(sv => sv.id === ref.id) || null;
+  if (!save){
+    for (let i = saves.length - 1; i >= 0; i--){
+      if (saves[i].name === ref.name){ save = saves[i]; break; }
+    }
+  }
+  if (!save){ document.getElementById("manageSavesBtn").click(); return; }
+  loadSaveData(save.data);
+  saveManager.style.display = "none";
+};
 
 /* --- Save modal --- */
 const saveModal = document.getElementById("saveModal");
@@ -2917,7 +3270,11 @@ function loadAndShowPublicSaves(){
     });
 }
 
-document.getElementById("browsePublicBtn").onclick = () => loadAndShowPublicSaves();
+document.getElementById("browsePublicBtn").onclick = () => {
+  if (window.__closeAuth) window.__closeAuth();
+  if (window.__closeSettings) window.__closeSettings();
+  loadAndShowPublicSaves();
+};
 document.getElementById("closePublicBtn").onclick = () => {
   document.getElementById("publicSavesModal").style.display = "none";
 };
@@ -3497,6 +3854,65 @@ document.addEventListener("keydown", e => {
     let c = "transparent"; try { c = elements[p.type].color(p); } catch {}
     info.style.setProperty("--sw", c);
   });
+})();
+</script>
+
+
+<script>
+/* ================= Settings popup + current-element chip ================= */
+(() => {
+  const $ = id => document.getElementById(id);
+  const panel = $("settingsPanel"), btn = $("settingsBtn");
+  const tabs = [...document.querySelectorAll(".spTab")];
+  const panes = [...document.querySelectorAll(".spPane")];
+
+  function showPane(id){
+    tabs.forEach(t => t.classList.toggle("active", t.dataset.pane === id));
+    panes.forEach(p => p.classList.toggle("active", p.id === id));
+  }
+  function setOpen(open, pane){
+    if (pane) showPane(pane);
+    panel.classList.toggle("open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  window.__closeSettings = () => setOpen(false);
+  btn.addEventListener("click", () => {
+    const opening = !panel.classList.contains("open");
+    if (opening && window.__closeAuth) window.__closeAuth();
+    setOpen(opening);
+  });
+  $("spClose").addEventListener("click", () => setOpen(false));
+  tabs.forEach(t => t.addEventListener("click", () => showPane(t.dataset.pane)));
+
+  // ----- element strip: arrows, wheel-to-horizontal, edge states -----
+  const strip = $("elements"), prev = $("stripPrev"), next = $("stripNext");
+  const edge = () => {
+    prev.disabled = strip.scrollLeft <= 1;
+    next.disabled = strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 1;
+  };
+  prev.addEventListener("click", () => strip.scrollBy({ left: -Math.max(120, strip.clientWidth * .7), behavior: "smooth" }));
+  next.addEventListener("click", () => strip.scrollBy({ left:  Math.max(120, strip.clientWidth * .7), behavior: "smooth" }));
+  strip.addEventListener("scroll", edge, { passive: true });
+  strip.addEventListener("wheel", e => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){ strip.scrollLeft += e.deltaY; e.preventDefault(); }
+  }, { passive: false });
+  window.addEventListener("resize", edge);
+  new MutationObserver(edge).observe(strip, { childList: true });
+
+  // picking a category starts the strip from its left edge
+  $("elementTabs").addEventListener("click", () => { strip.scrollLeft = 0; edge(); });
+
+  // start on the category of the selected element (sand -> Powders) so it's visible + highlighted
+  try { if (typeof elementSections !== "undefined" && elementSections.Powders) switchSection("Powders"); } catch {}
+  edge();
+
+  document.querySelectorAll("#paneMenu .menuGrid > button").forEach(b =>
+    b.addEventListener("click", () => setOpen(false)));
+
+  const title = $("propTitle"), name = $("elemChipName");
+  const sync = () => { name.textContent = (title.textContent || "").replace(/^Properties:\s*/, "") || "-"; };
+  new MutationObserver(sync).observe(title, { childList:true, characterData:true, subtree:true });
+  sync();
 })();
 </script>
 
@@ -4127,9 +4543,9 @@ canvas.style.height = displayH + "px";
   // never changes the grid size, and it doesn't get shrunk unnecessarily.
   mp.fit = () => {
     const uiRect = $("ui")?.getBoundingClientRect();
-    const stacked = window.innerWidth <= 720;
-    const availW = Math.max(1, stacked ? window.innerWidth : window.innerWidth - (uiRect?.width || 260));
-    const availH = Math.max(1, stacked ? window.innerHeight - (uiRect?.height || 0) : window.innerHeight);
+    const sideRect = $("catBar")?.getBoundingClientRect();
+    const availW = Math.max(1, window.innerWidth - (sideRect?.width || 0));
+    const availH = Math.max(1, window.innerHeight - (uiRect?.height || 0));
     const scale = Math.min(1, availW / canvas.width, availH / canvas.height);
     canvas.style.flex = "none";
     canvas.style.alignSelf = "center";
