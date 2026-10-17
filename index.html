@@ -5549,5 +5549,265 @@ canvas.style.height = displayH + "px";
 })();
 </script>
 
+
+<style>
+#stampsModal{position:fixed;inset:0;z-index:60000;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.78);font-family:var(--px-font)}
+#stampsModal.open{display:flex}
+#stampsBox{width:min(760px,96vw);max-height:85vh;display:flex;flex-direction:column;gap:10px;padding:16px;background:var(--panel);box-shadow:0 0 0 4px var(--ol),inset 0 0 0 4px var(--panel2)}
+#stampsHead{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#stampsHead h2{font:11px/1.5 var(--px-head);color:var(--ui-accent)}
+#stampsHelp{color:var(--muted);font-size:16px}
+#stampsList{overflow:auto;min-height:120px;display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:10px;padding:5px}
+#stampsList .stampCard{margin:0!important;width:100%;min-width:0;text-align:left;padding:8px;background:var(--panel3);box-shadow:0 0 0 2px var(--ol);display:flex;flex-direction:column;gap:6px;cursor:pointer}
+#stampsList .stampActions{display:flex;gap:5px;flex-wrap:wrap}
+#stampsList .stampActions button{font-size:13px;padding:5px 7px}
+#stampSelectOverlay{position:fixed;z-index:59000;pointer-events:none;border:2px dashed #fff;background:rgba(80,180,255,.18);display:none;box-sizing:border-box}
+#stampPlacementPreview{position:fixed;z-index:59001;display:none;pointer-events:none;box-sizing:border-box;border:2px solid #fff;outline:1px dashed #111;image-rendering:pixelated;opacity:.88}
+#stampPlacementInfo{position:fixed;z-index:61001;left:12px;bottom:12px;display:none;max-width:min(420px,calc(100vw - 24px));padding:10px 13px;background:var(--panel);color:var(--txt);box-shadow:0 0 0 3px var(--ol);font:14px/1.5 var(--px-font);pointer-events:none}
+#stampsList .stampCard canvas{width:100%;height:90px;min-height:90px;background:#111;image-rendering:pixelated}
+#stampsList .stampName{overflow-wrap:anywhere;color:var(--ui-accent)}
+#stampsList .stampMeta{font-size:14px;color:var(--muted)}
+#stampsFoot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+#stampsStatus{color:#9fd7c5;min-height:20px}
+@media(max-width:520px){#stampsBox{padding:12px}#stampsList{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<div id="stampsModal" role="dialog" aria-modal="true" aria-label="Stamps">
+  <div id="stampsBox">
+    <div id="stampsHead"><h2>STAMPS</h2><button id="stampsClose" type="button">Close (L / Esc)</button></div>
+    <div id="stampsHelp">Press S, then drag a rectangle over the world to select a stamp region. Stamps save automatically with a default name. Press R to place the newest stamp. Use Rename and Delete on each stamp.</div>
+    <div id="stampsList"></div>
+    <div id="stampsFoot"><span id="stampsStatus" role="status"></span><button id="stampCreateBtn" type="button">Select Region (S)</button></div>
+  </div>
+</div>
+<div id="stampPlacementInfo" role="status"></div>
+<script>
+(() => {
+  "use strict";
+  const modal = document.getElementById("stampsModal");
+  const list = document.getElementById("stampsList");
+  const status = document.getElementById("stampsStatus");
+  const STORAGE_KEY = "pixelSandboxStampsV1";
+  let stamps = [];
+  let selecting = false;
+  let placingStamp = null;
+  let selectionStart = null;
+  let selectionPointer = null;
+  const selectionOverlay = document.createElement("div");
+  selectionOverlay.id = "stampSelectOverlay";
+  document.body.appendChild(selectionOverlay);
+  const placementPreview = document.createElement("canvas");
+  placementPreview.id = "stampPlacementPreview";
+  placementPreview.style.imageRendering = "pixelated";
+  document.body.appendChild(placementPreview);
+  const placementInfo = document.getElementById("stampPlacementInfo");
+  let placementPoint = null;
+  function cancelPlacement(message="Stamp placement cancelled."){
+    placingStamp=null; placementPoint=null; placementPreview.style.display="none";
+    placementInfo.style.display="none"; canvas.style.cursor="";
+    status.textContent=message;
+  }
+  function updatePlacementPreview(e){
+    if(!placingStamp) return;
+    placementPoint=canvasCell(e);
+    const g=decompressGrid(placingStamp.data), h=g.length, w=g[0]?.length||0;
+    if(!w||!h) return;
+    const r=canvas.getBoundingClientRect(), cw=r.width/WIDTH, ch=r.height/HEIGHT;
+    const left=placementPoint.x-Math.floor(w/2), top=placementPoint.y-Math.floor(h/2);
+    placementPreview.width=w; placementPreview.height=h;
+    placementPreview.style.left=(r.left+left*cw)+"px";
+    placementPreview.style.top=(r.top+top*ch)+"px";
+    placementPreview.style.width=(w*cw)+"px";
+    placementPreview.style.height=(h*ch)+"px";
+    placementPreview.style.display="block";
+    const ctx=placementPreview.getContext("2d"); ctx.clearRect(0,0,w,h);
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+      const p=g[y][x]; if(!p||p.type==="air") continue;
+      ctx.fillStyle=elements[p.type]?.color?.(p)||"#fff"; ctx.fillRect(x,y,1,1);
+    }
+    placementInfo.style.display="block";
+    placementInfo.textContent=`Placing: ${placingStamp.name} (${w} × ${h}) · Position: ${placementPoint.x}, ${placementPoint.y} · Left-click to place · Right-click or Esc to cancel`;
+  }
+  try { stamps = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { stamps = []; }
+  if (!Array.isArray(stamps)) stamps = [];
+
+  function persist(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stamps)); }
+    catch { status.textContent = "Storage is full. Delete some stamps and try again."; }
+  }
+  function open(){ render(); modal.classList.add("open"); }
+  function close(){ modal.classList.remove("open"); }
+  function isTyping(t){
+    return !!t && (t.tagName === "TEXTAREA" || t.isContentEditable ||
+      (t.tagName === "INPUT" && !["range","button","checkbox"].includes(t.type)));
+  }
+  function beginSelection(){
+    if (modal.classList.contains("open")) close();
+    if (!canvas || typeof WIDTH !== "number" || !rawGrid?.length) return;
+    selecting = true; selectionStart = null; selectionPointer = null;
+    selectionOverlay.style.display = "none";
+    status.textContent = "Drag across the world to select a stamp region. Press Escape to cancel.";
+    toastStamp("Stamp selection: drag a rectangle over the world");
+    canvas.style.cursor = "crosshair";
+  }
+  function finishSelection(a,b){
+    selecting = false; canvas.style.cursor = ""; selectionOverlay.style.display = "none";
+    if(!a || !b) return;
+    const x1=Math.max(0,Math.min(WIDTH-1,Math.min(a.x,b.x)));
+    const y1=Math.max(0,Math.min(HEIGHT-1,Math.min(a.y,b.y)));
+    const x2=Math.max(0,Math.min(WIDTH-1,Math.max(a.x,b.x)));
+    const y2=Math.max(0,Math.min(HEIGHT-1,Math.max(a.y,b.y)));
+    const crop=[];
+    let hasPixel=false;
+    for(let y=y1;y<=y2;y++){
+      const row=rawGrid[y].slice(x1,x2+1).map(p=>({...p,updated:false,origin:null}));
+      if(row.some(p=>p.type!=="air")) hasPixel=true;
+      crop.push(row);
+    }
+    if(!hasPixel){ status.textContent="That region is empty. Press S to select another region."; open(); return; }
+    const stamp={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),name:"Stamp "+(stamps.length+1),width:x2-x1+1,height:y2-y1+1,data:compressGrid(crop),created:Date.now()};
+    stamps.push(stamp); if(stamps.length>60) stamps=stamps.slice(-60);
+    persist(); status.textContent=`Saved ${stamp.name} (${stamp.width} × ${stamp.height}). You can rename it below.`;
+    open(); render();
+  }
+  function canvasCell(e){
+    const r=canvas.getBoundingClientRect();
+    return {x:Math.floor((e.clientX-r.left)/r.width*canvas.width/SIZE),y:Math.floor((e.clientY-r.top)/r.height*canvas.height/SIZE)};
+  }
+  function updateSelectionOverlay(e){
+    if(!selectionStart) return;
+    const x=Math.min(selectionStart.clientX,e.clientX), y=Math.min(selectionStart.clientY,e.clientY);
+    selectionOverlay.style.left=x+"px"; selectionOverlay.style.top=y+"px";
+    selectionOverlay.style.width=Math.max(1,Math.abs(e.clientX-selectionStart.clientX))+"px";
+    selectionOverlay.style.height=Math.max(1,Math.abs(e.clientY-selectionStart.clientY))+"px";
+    selectionOverlay.style.display="block";
+  }
+  canvas.addEventListener("pointerdown",e=>{
+    if(placingStamp && e.button===2){
+      e.preventDefault(); e.stopImmediatePropagation(); cancelPlacement();
+      return;
+    }
+    if(e.button!==0) return;
+    if(placingStamp){
+      e.preventDefault(); e.stopImmediatePropagation();
+      const stamp=placingStamp; const point=canvasCell(e); cancelPlacement("");
+      placeStampAt(stamp,point);
+      return;
+    }
+    if(!selecting) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    selectionPointer=e.pointerId; selectionStart={...canvasCell(e),clientX:e.clientX,clientY:e.clientY};
+    selectionOverlay.style.left=e.clientX+"px"; selectionOverlay.style.top=e.clientY+"px";
+    selectionOverlay.style.width="1px"; selectionOverlay.style.height="1px"; selectionOverlay.style.display="block";
+    try{canvas.setPointerCapture(e.pointerId)}catch{}
+  },true);
+  canvas.addEventListener("pointermove",e=>{
+    if(placingStamp){e.preventDefault();e.stopImmediatePropagation();updatePlacementPreview(e);return;}
+    if(!selecting || selectionPointer!==e.pointerId || !selectionStart) return;
+    e.preventDefault(); e.stopImmediatePropagation(); updateSelectionOverlay(e);
+  },true);
+  canvas.addEventListener("contextmenu",e=>{if(placingStamp){e.preventDefault();e.stopImmediatePropagation();cancelPlacement();}},true);
+  canvas.addEventListener("pointerup",e=>{
+    if(!selecting || selectionPointer!==e.pointerId || !selectionStart) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const a={x:selectionStart.x,y:selectionStart.y}, b=canvasCell(e);
+    selectionStart=null; selectionPointer=null; finishSelection(a,b);
+  },true);
+  canvas.addEventListener("pointercancel",e=>{
+    if(!selecting || selectionPointer!==e.pointerId) return;
+    selectionStart=null; selectionPointer=null; selecting=false; canvas.style.cursor=""; selectionOverlay.style.display="none";
+  },true);
+  // Suppress the canvas's existing mouse-based drawing handlers during selection.
+  for(const type of ["mousedown","mousemove","mouseup","click"]){
+    canvas.addEventListener(type,e=>{if(selecting || placingStamp){e.preventDefault();e.stopImmediatePropagation();}},true);
+  }
+  function placeStamp(stamp){
+    if(!stamp || !Array.isArray(stamp.data)) return;
+    if(mp.active && !mp.isHost){ mp.notice("Only the room host can place stamps while connected."); return; }
+    placingStamp=stamp; selecting=false; selectionStart=null; selectionPointer=null;
+    close(); canvas.style.cursor="none"; placementPreview.style.display="none";
+    placementInfo.style.display="block";
+    placementInfo.textContent=`Placing: ${stamp.name} · Move the pointer to position the boxed preview. Left-click to place; right-click or Esc to cancel.`;
+    toastStamp(`Move to position ${stamp.name}; click to place, right-click to cancel`);
+  }
+  function placeStampAt(stamp, point){
+    if(!stamp || !Array.isArray(stamp.data)) return;
+    const crop = decompressGrid(stamp.data);
+    const sh=crop.length, sw=crop[0]?.length || 0;
+    // The clicked cell is the center of the stamp; stamps may extend to the canvas edges.
+    const left=point.x-Math.floor(sw/2), top=point.y-Math.floor(sh/2);
+    for(let sy=0;sy<sh;sy++) for(let sx=0;sx<sw;sx++){
+      const x=left+sx, y=top+sy, p=crop[sy][sx];
+      if(x>=0 && y>=0 && x<WIDTH && y<HEIGHT && p.type!=="air"){
+        rawGrid[y][x] = {...p, updated:false, origin:null};
+      }
+    }
+    canvas.style.cursor="";
+    placementPreview.style.display="none"; placementInfo.style.display="none";
+    applyBorderMode();
+    if(mp.active) mp.shareWorld();
+    status.textContent=`Placed "${stamp.name}" at (${point.x}, ${point.y}).`;
+    toastStamp(`Stamp placed: ${stamp.name}`);
+  }
+  function toastStamp(message){
+    let el=document.getElementById("stampToast");
+    if(!el){ el=document.createElement("div"); el.id="stampToast"; el.style.cssText="position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:61000;background:var(--panel);color:var(--txt);padding:8px 14px;box-shadow:0 0 0 3px var(--ol);pointer-events:none";document.body.appendChild(el); }
+    el.textContent=message; el.style.display="block";
+    clearTimeout(toastStamp.timer); toastStamp.timer=setTimeout(()=>el.style.display="none",1800);
+  }
+  function render(){
+    list.replaceChildren();
+    if(!stamps.length){
+      const empty=document.createElement("div"); empty.textContent="No stamps yet. Press S to create your first stamp.";
+      empty.style.cssText="grid-column:1/-1;padding:20px;text-align:center;color:var(--muted)";
+      list.appendChild(empty); return;
+    }
+    for(const stamp of [...stamps].reverse()){
+      const card=document.createElement("div"); card.className="stampCard"; card.tabIndex=0; card.setAttribute("role","button");
+      const preview=document.createElement("canvas"); preview.width=120; preview.height=90;
+      const pc=preview.getContext("2d"); pc.fillStyle="#111";pc.fillRect(0,0,120,90);
+      try{
+        const g=decompressGrid(stamp.data), gh=g.length, gw=g[0].length, scale=Math.min(120/gw,90/gh);
+        const ox=(120-gw*scale)/2, oy=(90-gh*scale)/2;
+        for(let y=0;y<gh;y++) for(let x=0;x<gw;x++){
+          const p=g[y][x]; if(p.type==="air") continue;
+          pc.fillStyle=elements[p.type]?.color?.(p)||"#fff";
+          pc.fillRect(Math.floor(ox+x*scale),Math.floor(oy+y*scale),Math.max(1,Math.ceil(scale)),Math.max(1,Math.ceil(scale)));
+        }
+      }catch{}
+      const title=document.createElement("span"); title.className="stampName"; title.textContent=stamp.name;
+      const meta=document.createElement("span"); meta.className="stampMeta"; meta.textContent=`${stamp.width} × ${stamp.height}`;
+      const actions=document.createElement("div"); actions.className="stampActions";
+      const rename=document.createElement("button"); rename.type="button"; rename.textContent="Rename";
+      rename.onclick=e=>{e.stopPropagation();const next=prompt("Rename stamp:",stamp.name);if(next===null)return;const cleaned=next.trim();if(!cleaned){status.textContent="Name cannot be empty.";return;}stamp.name=cleaned;persist();render();status.textContent=`Renamed stamp to "${cleaned}".`;};
+      const del=document.createElement("button"); del.type="button"; del.textContent="Delete"; del.className="danger";
+      del.onclick=e=>{e.stopPropagation();if(confirm(`Delete stamp "${stamp.name}"?`)){stamps=stamps.filter(x=>x.id!==stamp.id);persist();render();status.textContent=`Deleted "${stamp.name}".`;}};
+      actions.append(rename,del);
+      card.append(preview,title,meta,actions);
+      card.onclick=()=>placeStamp(stamp);
+      card.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();placeStamp(stamp);}};
+      list.appendChild(card);
+    }
+  }
+  document.getElementById("stampsClose").onclick=close;
+  document.getElementById("stampCreateBtn").onclick=beginSelection;
+  modal.addEventListener("click",e=>{if(e.target===modal)close();});
+  document.addEventListener("keydown",e=>{
+    if(e.ctrlKey||e.metaKey||e.altKey||isTyping(e.target)) return;
+    if(e.repeat) return;
+    if(e.key==="Escape" && (selecting || placingStamp)){e.preventDefault();selecting=false;selectionStart=null;selectionPointer=null;selectionOverlay.style.display="none";if(placingStamp)cancelPlacement("Stamp action cancelled.");else{canvas.style.cursor="";status.textContent="Stamp selection cancelled.";}if(!modal.classList.contains("open"))open();return;}
+    if(e.key==="Escape" && modal.classList.contains("open")){e.preventDefault();close();return;}
+    const key=e.key.toLowerCase();
+    if(key==="l"){e.preventDefault();modal.classList.contains("open")?close():open();}
+    else if(key==="s"){e.preventDefault();beginSelection();}
+    else if(key==="r"){
+      e.preventDefault();
+      const stamp=stamps[stamps.length-1];
+      if(stamp) placeStamp(stamp);
+      else {status.textContent="No stamps saved yet. Press S to make one."; if(!modal.classList.contains("open"))open();}
+    }
+  });
+})();
+</script>
+
 </body>
 </html>
