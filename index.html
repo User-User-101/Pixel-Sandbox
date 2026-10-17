@@ -638,6 +638,28 @@ body{ flex-direction:column !important; }
   #bar{ column-gap:4px; padding-left:6px; padding-right:6px; }
   #ui #bar #loginBtn{ max-width:80px; }
 }
+
+/* ---- zoom window (hold Z) ---- */
+#zoomView{
+  position:fixed; left:0; top:0; z-index:9500; display:none; pointer-events:none;
+  image-rendering:pixelated; background:#0b0b10;
+  box-shadow:0 0 0 3px var(--ol), 0 0 0 6px #fff, 0 6px 0 6px rgba(0,0,0,.35);
+}
+#zoomView.pinned{ pointer-events:auto; cursor:crosshair; touch-action:none; box-shadow:0 0 0 3px var(--ol), 0 0 0 6px var(--ui-accent), 0 6px 0 6px rgba(0,0,0,.35); }
+#zoomMarker{
+  position:fixed; left:0; top:0; z-index:9400; display:none; pointer-events:none; box-sizing:border-box;
+  box-shadow:0 0 0 1px rgba(0,0,0,.85), inset 0 0 0 1px rgba(255,255,255,.9);
+}
+#zoomMarker.pinned{ box-shadow:0 0 0 1px rgba(0,0,0,.85), inset 0 0 0 2px var(--ui-accent); }
+
+/* ---- undo/redo toast ---- */
+#undoToast{
+  position:fixed; left:50%; bottom:calc(var(--bar-h) + 16px); transform:translate(-50%, 8px);
+  z-index:9600; pointer-events:none; opacity:0; transition:opacity .15s, transform .15s;
+  padding:6px 14px; font-size:18px; color:var(--txt); background:var(--panel);
+  box-shadow:0 0 0 3px var(--ol), inset 0 0 0 3px var(--panel2); white-space:nowrap;
+}
+#undoToast.show{ opacity:1; transform:translate(-50%, 0); }
 </style>
 </head>
 <body>
@@ -752,7 +774,7 @@ body{ flex-direction:column !important; }
         <input type="number" id="airTempInput" value="20">
         <button id="applyAirTempBtn">Update Air Temperature</button>
 
-        <div id="lineHint">Hold Shift and drag for a straight line (right button erases). Esc cancels.</div>
+        <div id="lineHint">Hold Shift and drag for a straight line (right button erases). Esc cancels.<br>Hold Z for a zoom window: click to pin it, let go of Z to dismiss it, press Z again for a new one. Mouse wheel (while holding Z) changes the zoom.<br>A pinned zoom window is editable: left-drag paints, right-drag erases, Shift+drag draws a straight line.<br>Ctrl+Z undoes your last edit (a stroke, a line, a clear or a save load). Ctrl+Y or Ctrl+Shift+Z redoes it.</div>
       </div>
 
       <div class="spPane" id="paneMenu">
@@ -2452,7 +2474,7 @@ canvas.addEventListener("mousemove", e => {
   mouseY = Math.floor((e.clientY - rect.top)  * sy / SIZE);
   if (mouseDownLeft || mouseDownRight){
     moveTrail.push([mouseX, mouseY]);
-    if (moveTrail.length > 128) moveTrail.shift();
+    if (moveTrail.length > 4096) moveTrail.shift();
   }
   mp.cursor(mouseX, mouseY);
 
@@ -2466,6 +2488,22 @@ canvas.addEventListener("mousemove", e => {
       elements[p.type]?.description || "No description";
   } else {
     document.getElementById("description").innerText = "No description";
+  }
+});
+
+// Browsers merge several physical mouse movements into one mousemove per frame, which turns
+// fast curves into long chords. getCoalescedEvents() gives back the in-between positions;
+// pointermove fires just before its mousemove, so these go in the trail first and the
+// mousemove handler adds the final sample after them.
+canvas.addEventListener("pointermove", e => {
+  if (!(mouseDownLeft || mouseDownRight) || typeof e.getCoalescedEvents !== "function") return;
+  const evs = e.getCoalescedEvents();
+  for (let i = 0; i < evs.length - 1; i++){
+    const c = cellFromEvent(evs[i]);
+    const last = moveTrail[moveTrail.length - 1];
+    if (last && last[0] === c[0] && last[1] === c[1]) continue;
+    moveTrail.push(c);
+    if (moveTrail.length > 4096) moveTrail.shift();
   }
 });
 
@@ -2497,8 +2535,10 @@ canvas.addEventListener("mousedown", e => {
     catch { lineColor = "#ffffff"; }
     return;                       // no freehand painting while drawing a line
   }
-  if (e.button === 0) mouseDownLeft = true;
-  if (e.button === 2) mouseDownRight = true;
+  const start = cellFromEvent(e);
+  mouseX = start[0]; mouseY = start[1];
+  if (e.button === 0){ mouseDownLeft  = true; strokeLast.left  = start.slice(); }
+  if (e.button === 2){ mouseDownRight = true; strokeLast.right = start.slice(); }
 });
 canvas.addEventListener("mouseup", e => {
   if (e.button === 0) mouseDownLeft = false;
@@ -2549,12 +2589,20 @@ function lineStamps(x0, y0, x1, y1, size){
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
   const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx - dy, x = x0, y = y0, i = 0;
+  // A plain Bresenham line is only 8-connected: its cells touch corner-to-corner, and
+  // powders/liquids/gases can squeeze diagonally through those corners. For 1-cell
+  // brushes we add the missing cell at every diagonal step so the line is edge-connected
+  // (a solid barrier). Bigger brushes overlap their stamps and never leave such corners.
+  const sealCorners = size <= 1;
+  const shallow = dx >= dy;
   for (;;){
     if (i % step === 0) pts.push([x, y]);
     if (x === x1 && y === y1){ if (i % step !== 0) pts.push([x, y]); break; }
-    const e2 = 2 * err;
-    if (e2 > -dy){ err -= dy; x += sx; }
-    if (e2 <  dx){ err += dx; y += sy; }
+    const e2 = 2 * err, ox = x, oy = y;
+    let movedX = false, movedY = false;
+    if (e2 > -dy){ err -= dy; x += sx; movedX = true; }
+    if (e2 <  dx){ err += dx; y += sy; movedY = true; }
+    if (sealCorners && movedX && movedY) pts.push(shallow ? [x, oy] : [ox, y]);
     i++;
   }
   return pts;
@@ -2609,11 +2657,18 @@ function runStroke(down, key, fn){
   strokeLast[key] = prev;
 }
 
-setInterval(() => {
+function flushStrokes(){
   runStroke(mouseDownLeft,  "left",  strokePaint);
   runStroke(mouseDownRight, "right", strokeErase);
   moveTrail.length = 0;
-}, 30);
+}
+setInterval(flushStrokes, 30);
+
+// On release, paint whatever is still queued (the tail of the stroke, or a whole quick
+// flick) before the buttons are marked up, instead of waiting for the next 30ms tick.
+window.addEventListener("mouseup", e => {
+  if (e.button === 0 || e.button === 2) flushStrokes();
+}, true);
 
 /* =====================================================================
    Status / counts
@@ -3913,6 +3968,402 @@ document.addEventListener("keydown", e => {
   const sync = () => { name.textContent = (title.textContent || "").replace(/^Properties:\s*/, "") || "-"; };
   new MutationObserver(sync).observe(title, { childList:true, characterData:true, subtree:true });
   sync();
+})();
+</script>
+
+
+<script>
+/* ================= Zoom window: hold Z =================
+   Hold Z  -> a magnifier follows the cursor.
+   Click while holding Z -> pins it where it is (the click never paints).
+   Let go of Z -> a live magnifier disappears; a pinned one stays.
+   Press Z again -> the pinned one is replaced by a new live one.
+   A pinned window is editable: its mouse input is translated to the matching
+   cell on the real canvas and replayed through the canvas' own mouse handlers,
+   so brush size, replace mode, right-click erase, Shift lines and multiplayer
+   all behave exactly as if you had clicked the canvas there. */
+(() => {
+  const LEVELS = [7, 9, 11, 15, 19, 25, 31];   // grid cells shown across the window (odd => centred on a cell)
+  const BOX_PX = 240;                          // target window size in CSS px
+  let levelIdx = 3;
+
+  const view = document.createElement("canvas");
+  view.id = "zoomView";
+  const vctx = view.getContext("2d");
+  const marker = document.createElement("div");
+  marker.id = "zoomMarker";
+  document.body.append(marker, view);
+
+  let zHeld = false;       // is Z physically down
+  let shown = false;       // is a zoom window active (live or pinned)
+  let pinned = false;
+  let pin = null;          // { cx, cy, left, top } while pinned
+  let mx = -1, my = -1;    // last pointer position
+  let looping = false;
+  let vis = false;
+  let curK = LEVELS[levelIdx], curM = 16;   // cells across / px per cell of what is on screen right now
+
+  window.addEventListener("mousemove", e => { mx = e.clientX; my = e.clientY; }, true);
+
+  const isTyping = t => !!t && (t.tagName === "TEXTAREA" || t.isContentEditable ||
+    (t.tagName === "INPUT" && !["range", "button", "checkbox"].includes(t.type)));
+
+  function setVisible(v){
+    if (v === vis) return;
+    vis = v;
+    view.style.display = marker.style.display = v ? "block" : "none";
+  }
+
+  function cellAt(rect, x, y){
+    const scx = rect.width  ? canvas.width  / rect.width  : 1;
+    const scy = rect.height ? canvas.height / rect.height : 1;
+    return { cx: Math.floor((x - rect.left) * scx / SIZE), cy: Math.floor((y - rect.top) * scy / SIZE), scx, scy };
+  }
+
+  function render(){
+    const rect = canvas.getBoundingClientRect();
+    let cx, cy, left, top;
+    const K = LEVELS[levelIdx], m = Math.floor(BOX_PX / K), px = K * m;
+    curK = K; curM = m;
+
+    if (pinned){
+      ({ cx, cy } = pin);
+    } else {
+      const inside = mx >= rect.left && mx < rect.right && my >= rect.top && my < rect.bottom;
+      if (!inside){ setVisible(false); return; }
+      ({ cx, cy } = cellAt(rect, mx, my));
+    }
+    const { scx, scy } = cellAt(rect, rect.left, rect.top);
+
+    if (view.width !== px){ view.width = px; view.height = px; }
+    view.style.width = px + "px"; view.style.height = px + "px";
+
+    // ---- draw the magnified region ----
+    vctx.imageSmoothingEnabled = false;
+    vctx.fillStyle = "#0b0b10";
+    vctx.fillRect(0, 0, px, px);
+    const half = (K - 1) / 2;
+    const srcX = (cx - half) * SIZE, srcY = (cy - half) * SIZE, srcW = K * SIZE;
+    const x0 = Math.max(0, srcX), y0 = Math.max(0, srcY);
+    const x1 = Math.min(canvas.width, srcX + srcW), y1 = Math.min(canvas.height, srcY + srcW);
+    if (x1 > x0 && y1 > y0){
+      vctx.drawImage(canvas, x0, y0, x1 - x0, y1 - y0,
+        (x0 - srcX) / SIZE * m, (y0 - srcY) / SIZE * m, (x1 - x0) / SIZE * m, (y1 - y0) / SIZE * m);
+    }
+    if (m >= 10){                               // faint cell grid
+      vctx.fillStyle = "rgba(0,0,0,.22)";
+      for (let i = 1; i < K; i++){ vctx.fillRect(i * m, 0, 1, px); vctx.fillRect(0, i * m, px, 1); }
+    }
+    // centre cell outline (white with a dark inner edge so it reads on any colour)
+    if (!pinned){
+      vctx.lineWidth = 1;
+      vctx.strokeStyle = "#000"; vctx.strokeRect(half * m + 1.5, half * m + 1.5, m - 3, m - 3);
+      vctx.strokeStyle = "#fff"; vctx.strokeRect(half * m + .5,  half * m + .5,  m - 1, m - 1);
+    }
+
+    // ---- place the window ----
+    const off = 26, pad = 6;
+    if (pinned){
+      left = pin.left; top = pin.top;
+    } else {
+      left = mx + off; top = my + off;
+      if (left + px > rect.right - pad)  left = mx - off - px;
+      if (top  + px > rect.bottom - pad) top  = my - off - px;
+    }
+    left = Math.max(rect.left + pad, Math.min(left, rect.right  - px - pad));
+    top  = Math.max(rect.top  + pad, Math.min(top,  rect.bottom - px - pad));
+    view.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    if (pinned){ pin.left = left; pin.top = top; }
+    view.classList.toggle("pinned", pinned);
+
+    // ---- outline the magnified area on the canvas ----
+    marker.style.width  = (srcW / scx) + "px";
+    marker.style.height = (srcW / scy) + "px";
+    marker.style.transform = `translate(${rect.left + srcX / scx}px, ${rect.top + srcY / scy}px)`;
+    marker.classList.toggle("pinned", pinned);
+
+    setVisible(true);
+  }
+
+  function frame(){
+    if (!shown){ looping = false; setVisible(false); return; }
+    render();
+    requestAnimationFrame(frame);
+  }
+  function start(){
+    shown = true;
+    if (!looping){ looping = true; requestAnimationFrame(frame); }
+  }
+  function stop(){ shown = false; pinned = false; pin = null; setVisible(false); releaseStroke(); }
+  function releaseStroke(){
+    if (typeof mouseDownLeft !== "undefined" && (mouseDownLeft || mouseDownRight) && typeof dragging !== "undefined" && dragging){
+      dragging = false; mouseDownLeft = false; mouseDownRight = false;
+    }
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.code !== "KeyZ" || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTyping(e.target)) return;
+    if (e.repeat){ return; }
+    zHeld = true;
+    pinned = false; pin = null;            // a new Z press replaces any pinned window
+    releaseStroke();
+    start();
+  });
+
+  function releaseZ(){
+    if (!zHeld) return;
+    zHeld = false;
+    if (!pinned) stop();                   // live window vanishes; pinned one stays
+  }
+  document.addEventListener("keyup", e => { if (e.code === "KeyZ") releaseZ(); });
+  window.addEventListener("blur", releaseZ);
+
+  // Click while holding Z: pin the window and swallow the click so nothing gets painted.
+  window.addEventListener("mousedown", e => {
+    if (!e.isTrusted) return;               // replayed from the zoom window, not a real click
+    if (!zHeld || e.button !== 0 || e.target !== canvas) return;
+    e.stopPropagation(); e.preventDefault();
+    if (pinned || !shown) return;
+    const rect = canvas.getBoundingClientRect();
+    const { cx, cy } = cellAt(rect, e.clientX, e.clientY);
+    const vr = view.getBoundingClientRect();
+    if (!vis) return;                      // nothing on screen yet to pin
+    pin = { cx, cy, left: vr.left, top: vr.top };
+    pinned = true;
+  }, true);
+
+  // ---- editing through the pinned window ----
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  view.addEventListener("contextmenu", e => e.preventDefault());
+
+  // window position -> grid cell (clamped to the window and to the grid)
+  function cellFromView(e){
+    const vr = view.getBoundingClientRect();
+    const i = clamp(Math.floor((e.clientX - vr.left) / curM), 0, curK - 1);
+    const j = clamp(Math.floor((e.clientY - vr.top)  / curM), 0, curK - 1);
+    const half = (curK - 1) / 2;
+    return [clamp(pin.cx - half + i, 0, WIDTH - 1), clamp(pin.cy - half + j, 0, HEIGHT - 1)];
+  }
+  // replay a mouse event on the real canvas, centred on that cell
+  function replay(type, e, gx, gy){
+    const rect = canvas.getBoundingClientRect();
+    const scx = rect.width  ? canvas.width  / rect.width  : 1;
+    const scy = rect.height ? canvas.height / rect.height : 1;
+    canvas.dispatchEvent(new MouseEvent(type, {
+      bubbles: true, cancelable: true, view: window,
+      clientX: rect.left + (gx + .5) * SIZE / scx,
+      clientY: rect.top  + (gy + .5) * SIZE / scy,
+      button: type === "mousemove" ? 0 : e.button,
+      shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey
+    }));
+  }
+
+  let dragging = false;
+  view.addEventListener("pointerdown", e => {
+    if (!pinned || !pin) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.button !== 0 && e.button !== 2) return;
+    dragging = true;
+    try { view.setPointerCapture(e.pointerId); } catch {}
+    const [gx, gy] = cellFromView(e);
+    replay("mousemove", e, gx, gy);
+    replay("mousedown", e, gx, gy);
+  });
+  view.addEventListener("pointermove", e => {
+    if (!pinned || !pin) return;
+    const [gx, gy] = cellFromView(e);
+    replay("mousemove", e, gx, gy);        // also moves the brush preview + hover info
+  });
+  function endDrag(e){
+    if (!dragging) return;
+    dragging = false;
+    if (pinned && pin){
+      const [gx, gy] = cellFromView(e);
+      replay("mousemove", e, gx, gy);
+      replay("mouseup", e, gx, gy);
+    } else {
+      replay("mouseup", e, 0, 0);          // window vanished mid-drag: release the buttons
+    }
+  }
+  view.addEventListener("pointerup", endDrag);
+  view.addEventListener("pointercancel", endDrag);
+  view.addEventListener("lostpointercapture", e => { if (dragging) endDrag(e); });
+
+  // Wheel while holding Z: change the magnification.
+  window.addEventListener("wheel", e => {
+    if (!zHeld) return;
+    const rect = canvas.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX >= rect.right || e.clientY < rect.top || e.clientY >= rect.bottom) return;
+    e.preventDefault();
+    levelIdx = Math.max(0, Math.min(LEVELS.length - 1, levelIdx + (e.deltaY < 0 ? -1 : 1)));
+  }, { passive: false, capture: true });
+})();
+</script>
+
+
+<script>
+/* ================= Undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z) =================
+   One step = one stroke (mouse down -> up), one Shift line, one clear, or one save load.
+   Undo restores the whole world to the moment just before that action, so the
+   simulation rewinds with it (like The Powder Toy). In a multiplayer room only the
+   host can undo/redo, and the restored world is re-shared with everyone. */
+(() => {
+  const toastEl = document.createElement("div");
+  toastEl.id = "undoToast";
+  document.body.appendChild(toastEl);
+  let toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1100);
+  }
+
+  const undoStack = [], redoStack = [];
+  let pending = null;          // snapshot taken at the start of an action, committed on its first real change
+  let lastMpActive = false;
+
+  const BASE = new Set(["type", "temp", "wet", "life", "updated"]);
+
+  // ---- compact snapshot of the whole world ----
+  function takeSnapshot(){
+    const W = WIDTH, H = HEIGHT, n = W * H;
+    const names = [], nameIdx = new Map();
+    const ty = new Uint16Array(n), temp = new Float32Array(n), wet = new Float32Array(n), life = new Float32Array(n);
+    const extras = new Map();
+    let i = 0;
+    for (let y = 0; y < H; y++){
+      const row = rawGrid[y];
+      for (let x = 0; x < W; x++, i++){
+        const p = row[x];
+        let id = nameIdx.get(p.type);
+        if (id === undefined){ id = names.length; names.push(p.type); nameIdx.set(p.type, id); }
+        ty[i] = id; temp[i] = p.temp; wet[i] = p.wet; life[i] = p.life;
+        if (p.type !== "air"){               // extra per-pixel state (charge, creature data, ...)
+          let ex = null;
+          for (const k in p){
+            if (BASE.has(k)) continue;
+            const v = p[k];
+            if (k === "origin" && v === null) continue;
+            (ex || (ex = {}))[k] = Array.isArray(v) ? v.slice() : v;
+          }
+          if (ex) extras.set(i, ex);
+        }
+      }
+    }
+    return { W, H, names, ty, temp, wet, life, extras };
+  }
+
+  function applySnapshot(sn){
+    if (mp.active){
+      if (sn.W !== WIDTH || sn.H !== HEIGHT) return false;     // room size changed: can't use it
+    } else if (sn.W !== WIDTH || sn.H !== HEIGHT){
+      WIDTH = sn.W; HEIGHT = sn.H;
+      canvas.width = WIDTH * SIZE; canvas.height = HEIGHT * SIZE;
+    }
+    const g = new Array(sn.H);
+    let i = 0;
+    for (let y = 0; y < sn.H; y++){
+      const row = new Array(sn.W);
+      for (let x = 0; x < sn.W; x++, i++){
+        const px = { type: sn.names[sn.ty[i]], temp: sn.temp[i], wet: sn.wet[i], life: sn.life[i], updated: false, origin: null };
+        const ex = sn.extras.get(i);
+        if (ex) for (const k in ex) px[k] = Array.isArray(ex[k]) ? ex[k].slice() : ex[k];
+        row[x] = px;
+      }
+      g[y] = row;
+    }
+    rawGrid = g;
+    applyBorderMode();
+    if (mp.active) mp.shareWorld();
+    return true;
+  }
+
+  const clampN = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function trim(stack){
+    const cells = WIDTH * HEIGHT;
+    const max = clampN(Math.floor(150e6 / (cells * 14 + 1)), 6, 60);   // keep memory use bounded
+    while (stack.length > max) stack.shift();
+  }
+  function resetStacks(){ undoStack.length = 0; redoStack.length = 0; pending = null; }
+  function checkMode(){
+    if (mp.active !== lastMpActive){ lastMpActive = mp.active; resetStacks(); }
+  }
+  const canRecord = () => !(mp.active && !mp.isHost);
+
+  function pushUndo(sn){
+    undoStack.push(sn); redoStack.length = 0; trim(undoStack);
+  }
+  function begin(){
+    checkMode();
+    pending = canRecord() ? takeSnapshot() : null;
+  }
+  function commit(){
+    if (!pending) return;
+    pushUndo(pending); pending = null;
+  }
+
+  // ---- hook the edit entry points ----
+  const _paintAt = window.paintAt, _eraseAt = window.eraseAt;
+  window.paintAt = function(){ const r = _paintAt.apply(this, arguments); if (r && pending) commit(); return r; };
+  window.eraseAt = function(){ const r = _eraseAt.apply(this, arguments); if (r && pending) commit(); return r; };
+
+  const _finishLine = window.finishLine;
+  window.finishLine = function(){
+    if (lineStart) begin();
+    try { return _finishLine.apply(this, arguments); }
+    finally { pending = null; }
+  };
+
+  const _userClear = window.userClear;
+  window.userClear = function(){
+    checkMode();
+    if (canRecord()) pushUndo(takeSnapshot());
+    return _userClear.apply(this, arguments);
+  };
+
+  const _loadSaveData = window.loadSaveData;
+  window.loadSaveData = function(){
+    checkMode();
+    const sn = canRecord() ? takeSnapshot() : null;
+    const ok = _loadSaveData.apply(this, arguments);
+    if (ok && sn) pushUndo(sn);
+    return ok;
+  };
+
+  // freehand strokes: snapshot at mouse down, keep it only if the stroke changes something
+  canvas.addEventListener("mousedown", e => {
+    if (e.shiftKey || (e.button !== 0 && e.button !== 2)) return;   // Shift = line, handled in finishLine
+    begin();
+  }, true);
+  window.addEventListener("mouseup", () => { pending = null; });
+
+  // a resized window rebuilds (wipes) the world, so older snapshots no longer apply
+  window.addEventListener("resize", () => { if (!mp.active) resetStacks(); });
+
+  // ---- undo / redo ----
+  function step(fromStack, toStack, label){
+    checkMode();
+    if (mp.active && !mp.isHost){ mp.notice("Only the room host can undo or redo while connected."); return; }
+    if (mouseDownLeft || mouseDownRight || lineStart) return;      // never mid-stroke
+    const sn = fromStack.pop();
+    if (!sn){ toast("Nothing to " + label); return; }
+    const cur = takeSnapshot();
+    if (!applySnapshot(sn)){ resetStacks(); toast("Can't " + label + " here"); return; }
+    toStack.push(cur); trim(toStack);
+    toast((label === "undo" ? "Undo" : "Redo") + " (" + fromStack.length + " left)");
+  }
+
+  const isTyping = t => !!t && (t.tagName === "TEXTAREA" || t.isContentEditable ||
+    (t.tagName === "INPUT" && !["range", "button", "checkbox"].includes(t.type)));
+
+  document.addEventListener("keydown", e => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (isTyping(e.target)) return;                                // let text fields keep their own undo
+    if (e.code === "KeyZ" && !e.shiftKey){ e.preventDefault(); step(undoStack, redoStack, "undo"); }
+    else if ((e.code === "KeyZ" && e.shiftKey) || e.code === "KeyY"){ e.preventDefault(); step(redoStack, undoStack, "redo"); }
+  });
 })();
 </script>
 
