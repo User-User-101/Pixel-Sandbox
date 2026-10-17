@@ -923,6 +923,10 @@ function propFor(name, key, fallback){
   return v;
 }
 
+function normalizeChannel(value){
+  return String(value ?? "1").trim().slice(0, 32).toLowerCase() || "1";
+}
+
 /* ---------------------------------------------------------------------
    Border handling (solid / void / loop)
    --------------------------------------------------------------------- */
@@ -996,7 +1000,9 @@ function createPixel(type = "air"){
   if (P && typeof P.temp === "number" && !isNaN(P.temp)) temp = P.temp;
 
   const defaultLife = (P && typeof P.life === "number" && P.life > 0) ? P.life : 100;
-  return { type, temp, wet:0, life: defaultLife, updated:false, origin:null };
+  const pixel = { type, temp, wet:0, life: defaultLife, updated:false, origin:null };
+  if (type === "transmitter") pixel.channel = normalizeChannel(propFor(type, "channel", "1"));
+  return pixel;
 }
 
 /* ---------------------------------------------------------------------
@@ -2552,7 +2558,7 @@ window.addEventListener("mouseup", e => {
 /* =====================================================================
    Painting & erase
    ===================================================================== */
-function paintAt(x, y, el, size, rep){
+function paintAt(x, y, el, size, rep, channel){
   if (!Object.prototype.hasOwnProperty.call(elements, el)) return false;
   let changed = false;
   for (let dy = 0; dy < size; dy++){
@@ -2560,7 +2566,9 @@ function paintAt(x, y, el, size, rep){
       const gx = x + dx, gy = y + dy;
       if (!inBounds(gx, gy)) continue;
       if (rep || grid[gy][gx].type === "air"){
-        grid[gy][gx] = createPixel(el);
+        const pixel = createPixel(el);
+        if (el === "transmitter" && channel !== undefined) pixel.channel = normalizeChannel(channel);
+        grid[gy][gx] = pixel;
         changed = true;
       }
     }
@@ -2608,10 +2616,10 @@ function lineStamps(x0, y0, x1, y1, size){
   return pts;
 }
 
-function paintLine(x0, y0, x1, y1, el, size, rep){
+function paintLine(x0, y0, x1, y1, el, size, rep, channel){
   let changed = false;
   for (const [x, y] of lineStamps(x0, y0, x1, y1, size))
-    if (paintAt(x, y, el, size, rep)) changed = true;
+    if (paintAt(x, y, el, size, rep, channel)) changed = true;
   return changed;
 }
 function eraseLine(x0, y0, x1, y1, size){
@@ -2634,10 +2642,11 @@ function sendStroke(kind, pts, size, extra){
 
 function strokePaint(x0, y0, x1, y1){
   const size = brushSize, el = currentElement, rep = replaceMode;
+  const channel = el === "transmitter" ? normalizeChannel(elementProps.transmitter?.channel) : undefined;
   const pts = lineStamps(x0, y0, x1, y1, size);
   let changed = false;
-  for (const [x, y] of pts) if (paintAt(x, y, el, size, rep)) changed = true;
-  if (changed) sendStroke("paint", pts, size, { el, rep });
+  for (const [x, y] of pts) if (paintAt(x, y, el, size, rep, channel)) changed = true;
+  if (changed) sendStroke("paint", pts, size, { el, rep, ...(channel !== undefined ? { channel } : {}) });
 }
 function strokeErase(x0, y0, x1, y1){
   const size = brushSize;
@@ -2812,6 +2821,36 @@ function renderPropertyEditor(name){
     editor.appendChild(note);
   }
 
+  // Channel used by newly placed transmitters. Existing transmitters keep
+  // the channel they were stamped with, so multiple channels can coexist.
+  if (name === "transmitter"){
+    const channelLabel = document.createElement("label");
+    channelLabel.textContent = "Channel for new transmitters";
+    const channelInput = document.createElement("input");
+    channelInput.type = "text";
+    channelInput.maxLength = 32;
+    channelInput.value = normalizeChannel(P.channel);
+    channelInput.placeholder = "1";
+    channelInput.oninput = () => {
+      elementProps[name] = elementProps[name] || {};
+      if (channelInput.value.trim()) elementProps[name].channel = normalizeChannel(channelInput.value);
+      else delete elementProps[name].channel;
+    };
+    channelInput.onchange = () => {
+      const channel = normalizeChannel(channelInput.value);
+      elementProps[name] = elementProps[name] || {};
+      elementProps[name].channel = channel;
+      channelInput.value = channel;
+    };
+    editor.appendChild(channelLabel);
+    editor.appendChild(channelInput);
+    const channelNote = document.createElement("div");
+    channelNote.style.color = "#8fa";
+    channelNote.style.marginTop = "4px";
+    channelNote.textContent = "Matching channels share powered signals. Change this before placing transmitters on another channel.";
+    editor.appendChild(channelNote);
+  }
+
   // Raw JSON escape hatch
   const advLabel = document.createElement("label");
   advLabel.textContent = "Extra properties (JSON)";
@@ -2819,7 +2858,7 @@ function renderPropertyEditor(name){
 
   const ta = document.createElement("textarea");
   const extra = Object.fromEntries(Object.entries(P).filter(([k]) =>
-    !["speed","life","temp","conductDelay"].includes(k)
+    !["speed","life","temp","conductDelay","channel"].includes(k)
   ));
   ta.value = Object.keys(extra).length ? JSON.stringify(extra, null, 2) : "";
   ta.placeholder = '{ "key": "value" }';
@@ -2829,7 +2868,7 @@ function renderPropertyEditor(name){
     if (!raw){ 
       if (elementProps[name]){
         for (const k of Object.keys(elementProps[name]))
-          if (!["speed","life","temp","conductDelay"].includes(k)) delete elementProps[name][k];
+          if (!["speed","life","temp","conductDelay","channel"].includes(k)) delete elementProps[name][k];
       }
       return;
     }
@@ -2880,7 +2919,8 @@ function compressGrid(g){
     temp: Math.round(p.temp),
     wet: Math.round(p.wet * 100),
     life: Math.round(p.life),
-    charge: p.charge | 0
+    charge: p.charge | 0,
+    ...(p.type === "transmitter" ? { channel: normalizeChannel(p.channel) } : {})
   })));
 }
 
@@ -2895,6 +2935,7 @@ function decompressGrid(data){
       origin: null
     };
     if (p.charge) px.charge = p.charge;
+    if (px.type === "transmitter") px.channel = normalizeChannel(p.channel);
     return px;
   }));
 }
@@ -3738,7 +3779,7 @@ addElement("alcohol", {
    BOTTOM sides. Output goes to the RIGHT side.  Press T over a switch to flip it. */
 const COND = new Set(["wire","lamp","heater","cooler","igniter","fuse","metal","iron","saltwater","mercury"]);
 const GATES = { diode:(L)=>L, not:(L)=>!L, and:(L,T,B)=>T&&B, or:(L,T,B)=>T||B, nand:(L,T,B)=>!(T&&B), xor:(L,T,B)=>T!==B };
-const ELEC = new Set(["wire","battery","switch","lamp","heater","cooler","igniter","fuse","capacitor","clock",...Object.keys(GATES)]);
+const ELEC = new Set(["wire","battery","switch","lamp","heater","cooler","igniter","fuse","capacitor","clock","electricity","transmitter",...Object.keys(GATES)]);
 let vis = null;
 window.__ELEC = ELEC;  // lets the multiplayer snapshot code sync electronics state
 
@@ -3752,7 +3793,7 @@ function elecStep(){
   const push = (nx, ny) => { const i = ny*W + nx; if (!vis[i] && isC(grid[ny][nx])){ vis[i] = 1; stack.push(nx, ny); } };
   const seed = (x, y, ds) => { for (const d of ds){ const n = nbr(x, y, d[0], d[1]); if (n) push(n[0], n[1]); } };
   const flood = () => { while (stack.length){ const y = stack.pop(), x = stack.pop(); seed(x, y, DIRS); } };
-  const gates = [], caps = [];
+  const gates = [], caps = [], transmitters = [], pulses = [];
 
   for (let i = 0; i < list.length; i += 2){
     const x = list[i], y = list[i+1], p = grid[y][x], t = p.type;
@@ -3760,6 +3801,16 @@ function elecStep(){
     else if (t === "clock"){ p.tk = (p.tk || 0) + 1; p.on = (p.tk % 24) < 12; if (p.on){ vis[y*W+x] = 1; seed(x, y, DIRS); } }
     else if (GATES[t]){ gates.push(i); if (p.charge > 0) seed(x, y, [[1,0]]); }
     else if (t === "capacitor") caps.push(i);
+    else if (t === "transmitter") transmitters.push(i);
+    else if (t === "electricity") pulses.push(i);
+  }
+
+  // Electricity is a one-shot source: energize adjacent conductors this tick,
+  // then remove the source cell so the connected circuit receives a pulse.
+  for (const i of pulses){
+    const x = list[i], y = list[i+1];
+    seed(x, y, DIRS);
+    if (grid[y][x].type === "electricity") grid[y][x] = createPixel("air");
   }
   flood();
 
@@ -3785,11 +3836,31 @@ function elecStep(){
     return GATES[grid[y][x].type](inp(x,y,-1,0), inp(x,y,0,-1), inp(x,y,0,1)) ? 1 : 0; });
   gates.forEach((i, k) => { grid[list[i+1]][list[i]].charge = res[k]; });
 
+  // A transmitter listens to its local wire network, then broadcasts that
+  // powered state to every transmitter using the same channel.
+  const activeChannels = new Set();
+  for (const i of transmitters){
+    const x = list[i], y = list[i+1], p = grid[y][x];
+    const inputOn = DIRS.some(d => {
+      const n = nbr(x, y, d[0], d[1]);
+      return n && vis[n[1]*W + n[0]] === 1;
+    });
+    if (inputOn) activeChannels.add(normalizeChannel(p.channel));
+  }
+  for (const i of transmitters){
+    const x = list[i], y = list[i+1], p = grid[y][x];
+    p.pw = activeChannels.has(normalizeChannel(p.channel));
+    if (p.pw) seed(x, y, DIRS);
+  }
+  flood();
+
   // Consumers.
   for (let i = 0; i < list.length; i += 2){
     const x = list[i], y = list[i+1], p = grid[y][x], t = p.type;
     if (!ELEC.has(p.type)) continue;
-    const on = vis[y*W + x] === 1;
+    const on = t === "transmitter"
+      ? activeChannels.has(normalizeChannel(p.channel))
+      : vis[y*W + x] === 1;
     p.pw = on;
     if (p.temp > 900){ grid[y][x] = mk("fire", { life: 20, temp: 600 }); continue; }   // melts
     if (!on) continue;
@@ -3813,6 +3884,8 @@ update = function(){ if (paused) return; updateOld(); elecStep(); };
 
 const lit = (on, off) => p => p.pw ? on : off;
 addElement("wire",    { color: lit("#ffe066","#b87333"), description: "Copper wire. Carries power; glows yellow when live." }, "Electronics");
+addElement("electricity", { color: () => "#ffffff", description: "One-shot electricity pulse. Powers connected wires and conductive devices for one simulation tick, then disappears." }, "Electronics");
+addElement("transmitter", { color: lit("#74f7ff","#37576b"), description: "Wireless transmitter. Repeats powered signals to transmitters on the same channel; connect it to a wire network." }, "Electronics");
 addElement("battery", { color: () => "#22b84c", description: "Battery. Always powers every wire touching it." }, "Electronics");
 addElement("switch",  { color: p => p.charge > 0 ? "#7dff7d" : "#b33", description: "Switch. Hover and press T to flip it. Green = closed (conducts)." }, "Electronics");
 addElement("lamp",    { color: lit("#fffbd0","#4a4a4a"), description: "Lamp. Lights up when powered." }, "Electronics");
@@ -3836,7 +3909,7 @@ for (const [n, [c, d]] of Object.entries(gateInfo))
 
 /* Save-format ids for the new elements (continues after metal = 34). */
 ["gas","salt","saltwater","gunpowder","snow","mercury","honey","alcohol","wire","battery","switch","lamp",
- "heater","cooler","igniter","fuse","capacitor","clock","diode","not","and","or","nand","xor"]
+ "heater","cooler","igniter","fuse","capacitor","clock","diode","not","and","or","nand","xor","electricity","transmitter"]
   .forEach((n, i) => { typeMap[n] = 35 + i; revTypeMap[35 + i] = n; });
 
 /* T flips switches under the brush. */
@@ -4821,8 +4894,8 @@ canvas.style.height = displayH + "px";
   function applyAction(m){
     switch (m.t){
       case "paint":
-        if (m.x2 !== undefined) paintLine(m.x, m.y, m.x2, m.y2, m.el, m.size, m.rep);
-        else paintAt(m.x, m.y, m.el, m.size, m.rep);
+        if (m.x2 !== undefined) paintLine(m.x, m.y, m.x2, m.y2, m.el, m.size, m.rep, m.channel);
+        else paintAt(m.x, m.y, m.el, m.size, m.rep, m.channel);
         break;
       case "erase":
         if (m.x2 !== undefined) eraseLine(m.x, m.y, m.x2, m.y2, m.size);
@@ -4845,6 +4918,14 @@ canvas.style.height = displayH + "px";
   async function encodeSnapshot(target){
     const names = Object.keys(elements);
     const idx = Object.fromEntries(names.map((n, i) => [n, i]));
+    const transmitterIndex = channel => {
+      const tag = "@tx:" + encodeURIComponent(normalizeChannel(channel));
+      if (idx[tag] !== undefined) return idx[tag];
+      if (names.length >= 256) return idx.transmitter ?? idx.air ?? 0;
+      idx[tag] = names.length;
+      names.push(tag);
+      return idx[tag];
+    };
     const n = WIDTH * HEIGHT;
     const raw = new Uint8Array(n * 8);
     const dv = new DataView(raw.buffer);
@@ -4853,7 +4934,10 @@ canvas.style.height = displayH + "px";
       const row = rawGrid[y];
       for (let x = 0; x < WIDTH; x++, o += 8){
         const p = row[x];
-        dv.setUint8(o, idx[p.type] ?? idx.air ?? 0);
+        const typeIndex = p.type === "transmitter"
+          ? transmitterIndex(p.channel)
+          : (idx[p.type] ?? idx.air ?? 0);
+        dv.setUint8(o, typeIndex);
         dv.setUint8(o + 1, clamp(Math.round(p.wet * 100), 0, 255));
         dv.setUint8(o + 2, p.burning ? 1 : 0);
         dv.setUint8(o + 3, clamp(Math.max(p.grace | 0, p.charge | 0), 0, 255));
@@ -4943,19 +5027,31 @@ canvas.style.height = displayH + "px";
 
   function applySnapshot(names, body){
     const dv = new DataView(body.buffer, body.byteOffset, body.byteLength);
-    const types = names.map((n) => (typeof n === "string" && Object.prototype.hasOwnProperty.call(elements, n) ? n : "air"));
+    const types = names.map(n => {
+      if (typeof n === "string" && n.startsWith("@tx:")){
+        let channel = "1";
+        try { channel = normalizeChannel(decodeURIComponent(n.slice(4))); } catch {}
+        return { type: "transmitter", channel };
+      }
+      return {
+        type: typeof n === "string" && Object.prototype.hasOwnProperty.call(elements, n) ? n : "air",
+        channel: null
+      };
+    });
     let o = 0;
     for (let y = 0; y < HEIGHT; y++){
       const row = rawGrid[y];
       for (let x = 0; x < WIDTH; x++, o += 8){
+        const kind = types[dv.getUint8(o)] || { type: "air", channel: null };
         const px = {
-          type: types[dv.getUint8(o)] || "air",
+          type: kind.type,
           temp: dv.getInt16(o + 4),
           wet: dv.getUint8(o + 1) / 100,
           life: dv.getUint16(o + 6),
           updated: false,
           origin: null
         };
+        if (kind.channel !== null) px.channel = kind.channel;
         if (dv.getUint8(o + 2) & 1) px.burning = true;
         const g = dv.getUint8(o + 3);
         if (g){ px.grace = g; if (window.__ELEC && window.__ELEC.has(px.type)) px.charge = g; }
